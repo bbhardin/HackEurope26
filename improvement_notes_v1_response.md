@@ -329,7 +329,7 @@ The system only tracks WhatsApp messages that flow through the webhook. If the w
 ### Complexity: Low–Medium
 The data model already supports this. The main work is the frontend form and the optional keyword detection for order-relevant communication.
 
-# Edit: Point 10 is a good point. Please keep it. On top of that, we would like to implement logging of outgoing messages. In other words, a customer texts the wholesaler via WhatsApp and that is played into the dashboard. Now, equally, the wholesaler can text the customer via WhatsApp back. This should also be logged in the application and, if relevant, affect the order details. For example, if outgoing message says "I will edit your order to 1 bag less of coffee" and the custoemr replies "Sounds good", the order should be adapted accordingly.
+# Edit: Point 10 is a good point. Please keep it. On top of that, as a separate 11th todo, we would like to implement logging of outgoing messages. In other words, a customer texts the wholesaler via WhatsApp and that is played into the dashboard. Now, equally, the wholesaler can text the customer via WhatsApp back. This should also be logged in the application and, if relevant, affect the order details. For example, if outgoing message says "I will edit your order to 1 bag less of coffee" and the custoemr replies "Sounds good", the order should be adapted accordingly.
 
 ---
 
