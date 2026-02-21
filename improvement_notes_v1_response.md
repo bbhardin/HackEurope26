@@ -199,6 +199,7 @@ This is a **configuration/deployment task**, not a code change. The steps are:
 4. **Test phone number**: Meta provides a test phone number in the WhatsApp Business sandbox for development.
 
 **Code improvement** (independent of credentials): Add a "message outbox" concept so that when WhatsApp credentials are missing, outbound messages are stored in a `message_outbox` table and displayed in the dashboard. This way the demo still shows what *would* have been sent, even without live WhatsApp. Currently these messages are only visible in the conversation log on the customer detail page — making them more prominent would help.
+# Edit: We are currently awaiting the Meta WhatsApp Developer Key. We will have it available before implementing the revised version specified in this document.
 
 ### Complexity: Low (code) / External dependency (credentials)
 
