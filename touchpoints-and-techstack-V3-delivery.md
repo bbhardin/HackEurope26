@@ -390,6 +390,229 @@ order_patterns (customer_id, product_id, avg_interval_days,
 
 ---
 
+## Part 9: Implementation Todo List (TIER 1 Only)
+
+This is the task-level breakdown for building all three TIER 1 features. Phases are roughly sequential — later phases depend on earlier ones — but tasks within a phase can often be parallelised across team members.
+
+---
+
+### Phase 0: Project Scaffolding & Setup
+> Goal: Everyone can run the project locally and push to a shared repo.
+
+- [ ] **0.1** Initialise monorepo structure: `/backend` (FastAPI/Python), `/frontend` (Next.js), `/data` (seed files)
+- [ ] **0.2** Set up Python backend: FastAPI project with `pyproject.toml` or `requirements.txt`, virtualenv, basic health endpoint (`GET /health`)
+- [ ] **0.3** Set up Next.js frontend: `create-next-app` with Tailwind CSS, basic page rendering
+- [ ] **0.4** Set up SQLite database file and connection utility in backend (`database.py`)
+- [ ] **0.5** Configure environment variables: `ANTHROPIC_API_KEY`, `META_WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
+- [ ] **0.6** Set up Vercel project for frontend, Railway/Fly.io project for backend (deploy empty shells to confirm pipeline works)
+- [ ] **0.7** Register Meta WhatsApp Business Cloud API app: create Meta Developer account, set up test business number, configure webhook URL pointing to backend
+
+---
+
+### Phase 1: Data Layer — Schema, Seed Data, & Context Files
+> Goal: Database is populated with realistic mock data that all agents can query.
+
+- [ ] **1.1** Create SQLite schema migration script implementing the data model from Part 6 (customers, products, customer_context, orders, order_items, agent_actions, conversations, order_patterns)
+- [ ] **1.2** Write seed script: **products** — ~200 mock SKUs across categories (beverages, dairy, meat, produce, dry goods) with realistic English names, units, and prices
+- [ ] **1.3** Write seed script: **customers** — 10–20 mock customers (restaurant names, phone numbers, WhatsApp IDs, delivery addresses, health scores)
+- [ ] **1.4** Write seed script: **customer_context** — for each customer, create a `context_json` blob containing: typical basket (product IDs + usual quantities), order frequency (e.g., "every Tuesday"), delivery preferences, any notes
+- [ ] **1.5** Write seed script: **order history** — generate 8–12 weeks of historical orders per customer, consistent with their typical basket and frequency. Populate `orders`, `order_items`, and `order_patterns` tables.
+- [ ] **1.6** Write seed script: **conversations** — a handful of past WhatsApp messages per customer (inbound orders + outbound confirmations) to populate conversation memory
+- [ ] **1.7** Create a single `seed_all.py` script that runs all seed scripts in order and produces a ready-to-use `demo.db`
+- [ ] **1.8** Write basic CRUD utility functions: `get_customer_by_phone()`, `get_customer_context()`, `get_products_by_query()`, `get_customer_order_history()`, `create_order()`, `update_order_status()`, `log_agent_action()`, `save_conversation()`
+
+---
+
+### Phase 2: WhatsApp Integration (Meta Business API)
+> Goal: Incoming WhatsApp messages arrive at our backend; outbound messages reach the customer's phone.
+
+- [ ] **2.1** Implement webhook verification endpoint: `GET /webhook` — responds to Meta's hub.challenge for webhook registration
+- [ ] **2.2** Implement webhook receiver endpoint: `POST /webhook` — receives incoming WhatsApp messages (text, voice, image), extracts sender phone number, message type, and content
+- [ ] **2.3** Implement message type handlers:
+  - **Text**: extract message body directly
+  - **Voice**: download audio file from Meta API → send to Whisper API for transcription → return transcript text
+  - **Image**: download image from Meta API → hold as base64 for Claude Vision processing
+- [ ] **2.4** Implement outbound message function: `send_whatsapp_message(phone_number, message_text)` — calls Meta Cloud API `POST /{phone_number_id}/messages` to send text replies
+- [ ] **2.5** Test end-to-end: send a WhatsApp message to the test number → confirm it arrives at the webhook → confirm a reply is sent back (echo test)
+- [ ] **2.6** Add error handling: retry logic for Meta API failures, logging for malformed payloads, graceful handling of unsupported message types
+
+---
+
+### Phase 3: Customer Agent — Intent Classification & Order Parsing
+> Goal: Given a raw message + customer context, the agent returns a structured intent + parsed order.
+
+- [ ] **3.1** Define the Customer Agent's system prompt: include role description, available intents (`place_order`, `repeat_order`, `modify_order`, `remind_last_order`, `general_inquiry`), output schema (JSON), instructions to use customer context for fuzzy matching and validation
+- [ ] **3.2** Define the Customer Agent's tool schemas for Claude tool-use:
+  - `search_product_catalogue(query: str)` → returns top-N matching products with SKU, name, unit, price
+  - `get_customer_history(customer_id: str)` → returns recent orders with items
+  - `get_customer_context(customer_id: str)` → returns customer.txt context_json
+  - `flag_anomaly(details: str)` → records anomaly for orchestrator
+- [ ] **3.3** Implement tool handler functions that execute the actual DB queries when Claude calls them
+- [ ] **3.4** Implement the Customer Agent orchestration loop: receive message → load customer context → call Claude API with system prompt + tools + message → handle tool calls → return final structured output (intent, parsed items with product IDs/quantities/prices/confidence scores, any flags/anomalies, suggested response text)
+- [ ] **3.5** Implement fuzzy product matching logic inside `search_product_catalogue`: string similarity against product names (use `fuzzywuzzy` or similar), return matches above a threshold with confidence scores
+- [ ] **3.6** Implement anomaly detection: compare parsed quantities against `order_patterns` table — flag if quantity deviates >3x from historical average
+- [ ] **3.7** Handle the `repeat_order` intent: retrieve last order from history, propose it as a new order with same items/quantities
+- [ ] **3.8** Handle the `remind_last_order` intent: retrieve recent orders, generate a natural-language summary
+- [ ] **3.9** Write unit tests: test with 5–10 sample messages covering each intent type, verify correct parsing, product matching, and anomaly flagging
+
+---
+
+### Phase 4: Wholesaler Orchestrator — Order Routing & Approval Flow
+> Goal: Customer Agent output flows into the Orchestrator, which creates pending orders and handles the approval lifecycle.
+
+- [ ] **4.1** Implement the main message processing pipeline: webhook receives message → identify customer by phone → invoke Customer Agent → receive structured output → route to Orchestrator
+- [ ] **4.2** Implement Orchestrator logic for **order intents** (`place_order`, `repeat_order`):
+  - Create a new `orders` row with status `pending_confirmation`, store `raw_message`, compute `total_value` from parsed items
+  - Create `order_items` rows for each parsed product (product_id, quantity, unit_price, matched_confidence, original_text)
+  - Log to `agent_actions` table (agent_type: customer_agent, action: parsed_order, details_json with full LLM output)
+  - Log to `conversations` table (inbound message)
+- [ ] **4.3** Implement Orchestrator logic for **direct response intents** (`remind_last_order`, `general_inquiry`):
+  - Take the response text from Customer Agent output
+  - Call `send_whatsapp_message()` to reply immediately
+  - Log to `agent_actions` and `conversations`
+  - No dashboard involvement
+- [ ] **4.4** Implement API endpoints for the dashboard to consume:
+  - `GET /api/orders?status=pending_confirmation` — list pending orders with items, customer info, flags
+  - `GET /api/orders?status=confirmed` — list confirmed orders
+  - `GET /api/orders/{id}` — single order detail with items, anomaly flags, LLM reasoning
+  - `GET /api/orders/overview` — aggregated stats: total pending value, total confirmed value, count by status
+  - `POST /api/orders/{id}/approve` — set status to `confirmed`, trigger outbound WhatsApp confirmation
+  - `POST /api/orders/{id}/reject` — set status to `rejected`, call placeholder (no WhatsApp message for now)
+- [ ] **4.5** Implement the approval → outbound message flow: when `POST /api/orders/{id}/approve` is called:
+  - Update order status to `confirmed`, set `confirmed_at` and `confirmed_by`
+  - Generate a line-by-line WhatsApp confirmation message from order_items (product name, quantity, unit price, line total, order total, delivery info)
+  - Call `send_whatsapp_message()` to send confirmation to customer
+  - Log to `agent_actions` (agent_type: orchestrator, action: order_confirmed)
+  - Log to `conversations` (outbound confirmation)
+- [ ] **4.6** Implement unknown customer handling: if phone number not found in `customers` table, create a placeholder alert on the dashboard ("New customer — unknown phone number"), store the raw message, skip agent processing
+- [ ] **4.7** Write integration tests: simulate a full flow from webhook payload → Customer Agent → Orchestrator → pending order in DB → approval → outbound message mock
+
+---
+
+### Phase 5: Frontend Dashboard (Next.js + Tailwind)
+> Goal: Wholesaler can view, approve/reject orders, and see customer health — all from a web dashboard.
+
+- [ ] **5.1** Set up API client in Next.js: configure `fetch` or `axios` calls to the FastAPI backend endpoints from Phase 4.4
+- [ ] **5.2** Build **layout shell**: sidebar navigation (Order Overview, Order Queue, Customer Health, Alerts, Activity Log), header with branding, responsive structure
+- [ ] **5.3** Build **Order Overview** page:
+  - Top-level KPI cards: total pending order value, total confirmed order value today, number of orders by status (pending / confirmed / rejected / flagged)
+  - Simple revenue trend (bar or line chart) from historical confirmed orders
+- [ ] **5.4** Build **Order Queue** page:
+  - Table/card list of pending orders: customer name, order timestamp, parsed items summary, total value, confidence score, anomaly flags
+  - Each order has **Approve** (green) and **Reject** (red) buttons
+  - Clicking Approve calls `POST /api/orders/{id}/approve` → optimistic UI update → order moves to confirmed
+  - Clicking Reject calls `POST /api/orders/{id}/reject` → order moves to rejected
+  - Expandable row/modal showing full order detail: each line item (product, quantity, unit price, line total, original text, confidence), LLM reasoning, raw customer message
+- [ ] **5.5** Build **Customer Health** page:
+  - Grid/list of all customers: name, last order date, order frequency, health score, trend indicator (arrow up/down/flat)
+  - Colour-coded health: green (healthy), amber (declining), red (churn risk)
+  - Click into a customer → detail view with their recent orders and conversation history
+- [ ] **5.6** Build **Alerts** panel:
+  - List of alerts: churn warnings, anomaly flags, nudge delivery confirmations
+  - Each alert shows: type, customer name, detail text, timestamp
+  - Dismissible or acknowledgeable
+- [ ] **5.7** Build **Activity Log** page:
+  - Chronological list of all agent_actions: timestamp, agent type, action, entity, details
+  - Filterable by agent type and date range
+- [ ] **5.8** Apply SKILL.md design principles: distinctive typography (not Inter/Roboto), status-driven colour system (green/amber/red), industrial-utilitarian tone, subtle motion for order queue updates (new orders slide in, approve/reject animations)
+- [ ] **5.9** Implement polling or WebSocket for real-time updates: dashboard auto-refreshes when new orders arrive or statuses change (simplest: poll `/api/orders` every 5 seconds; stretch: WebSocket via FastAPI)
+- [ ] **5.10** Test full UI flow: load dashboard → see pending orders → approve one → confirm it disappears from queue and appears in confirmed → check that WhatsApp confirmation was sent (via backend logs)
+
+---
+
+### Phase 6: Nudge Scheduler — Reorder Detection & Proactive Nudges
+> Goal: A background process detects overdue customers and sends WhatsApp nudges.
+
+- [ ] **6.1** Implement `get_overdue_customers(current_date)` query: scan `order_patterns` table for customers whose `next_expected_date` is before today and who have no order with status `received`/`parsed`/`pending_confirmation`/`confirmed` created after `next_expected_date`
+- [ ] **6.2** Implement reorder suggestion builder: for an overdue customer, load their `customer_context` (typical basket) → build a proposed reorder with their usual items and quantities
+- [ ] **6.3** Implement nudge message generator: use Claude API (lightweight call) to produce a natural, personalised WhatsApp nudge message from the reorder suggestion (e.g., "Hi Chef Davis, your usual Tuesday order is still open. Shall we place it? 15kg pork tenderloin, 8kg onions, 20L cooking oil. Reply 'Yes' to confirm or send changes.")
+- [ ] **6.4** Implement risk-level routing:
+  - **Low risk** (1–2 days overdue): send nudge via WhatsApp directly
+  - **High risk** (7+ days overdue, or declining order frequency over 4+ weeks): create a churn alert on the dashboard instead of (or in addition to) sending a nudge
+- [ ] **6.5** Implement the scheduler: use APScheduler to run the nudge scan at a configurable interval (default: daily at 08:00). For the demo, also expose a manual trigger endpoint `POST /api/nudge/run` so we can fire it on demand.
+- [ ] **6.6** Handle nudge responses: when a customer replies "Yes" to a nudge, the webhook receives it → Customer Agent classifies as `repeat_order` (the nudge's proposed basket) → flows through the normal Orchestrator → pending order on dashboard → wholesaler approves
+- [ ] **6.7** Update `order_patterns` after each confirmed order: recalculate `avg_interval_days`, `avg_quantity`, `last_order_date`, `next_expected_date` for the products in that order
+- [ ] **6.8** Log all nudge activity to `agent_actions` (agent_type: nudge_scheduler) and `conversations` (outbound nudge message)
+- [ ] **6.9** Write tests: create a customer with an overdue pattern, run nudge scan, verify nudge message is generated and sent (or alert created for high-risk)
+
+---
+
+### Phase 7: Order Confirmation & Modification (TIER 1 Feature #3)
+> Goal: Customers can modify orders via WhatsApp; modifications flow back through the approval loop.
+
+- [ ] **7.1** Implement `modify_order` intent handling in Customer Agent: when a customer sends a follow-up message that references an existing pending order (e.g., "Actually make it 30kg chicken instead of 20kg"), the agent:
+  - Identifies the pending order (most recent pending order for this customer)
+  - Parses the modification (which item, new quantity)
+  - Returns structured output with intent `modify_order`, original order ID, and updated items
+- [ ] **7.2** Implement Orchestrator handling for `modify_order`:
+  - Update the existing order's `order_items` (change quantity, recalculate line price and total)
+  - Reset order status to `pending_confirmation` (if it was already pending, it stays; this handles edge cases)
+  - Log the modification in `agent_actions`
+  - Dashboard shows the updated order with a "Modified" badge and a diff (what changed)
+- [ ] **7.3** Implement substitution communication flow: when the wholesaler rejects an order or flags a specific item for substitution:
+  - `POST /api/orders/{id}/substitute` with `{ item_id, substitute_product_id }`
+  - Orchestrator generates a WhatsApp message: "Item X is currently unavailable. We suggest Y instead at €Z/kg. Reply 'OK' to confirm or let us know your preference."
+  - Customer's reply flows back through the normal agent pipeline
+- [ ] **7.4** Implement confirmation message formatting: after approval, generate a detailed WhatsApp message with line items, quantities, unit prices, line totals, order total, and expected delivery window
+- [ ] **7.5** Write tests: send an order → modify it via follow-up message → verify order_items updated → approve → verify confirmation message includes the modified quantities
+
+---
+
+### Phase 8: Integration Testing & Demo Polish
+> Goal: The full end-to-end flow works reliably for the demo scenario described in Part 7.
+
+- [ ] **8.1** Run the full demo scenario end-to-end:
+  1. Send WhatsApp message as Chef Meyer → verify it arrives at webhook → Customer Agent parses → pending order on dashboard
+  2. Approve on dashboard → WhatsApp confirmation sent to Chef Meyer
+  3. Trigger nudge scan → verify The Oak Restaurant gets a nudge
+  4. Reply "Yes" as Chef Davis → pending order created → approve → confirmation sent
+- [ ] **8.2** Seed the demo database with the specific scenario data: Chef Meyer's context, The Oak Restaurant's context, their order patterns, product catalogue entries for the items mentioned in the demo
+- [ ] **8.3** Polish error states: what happens if the LLM fails to parse? (Show "Unable to parse — manual review required" on dashboard with raw message). What if WhatsApp API is down? (Queue the outbound message for retry.)
+- [ ] **8.4** Polish dashboard UI: ensure loading states, empty states, and transitions are smooth. Verify the Order Overview numbers update correctly after approvals.
+- [ ] **8.5** Deploy to Vercel (frontend) + Railway/Fly.io (backend). Update Meta webhook URL to point to deployed backend. Verify the full flow works over the internet (not just localhost).
+- [ ] **8.6** Prepare demo script: step-by-step walkthrough matching the Part 7 scenario, with pre-prepared WhatsApp messages to send, and talking points for each dashboard screen.
+
+---
+
+### Phase Summary & Dependencies
+
+```
+Phase 0: Project Scaffolding ──────────────────────────┐
+                                                        │
+Phase 1: Data Layer ───────────────────────────────────┤
+                                                        │
+Phase 2: WhatsApp Integration ─────────────────────────┤
+                                                        │
+           ┌────────────────────────────────────────────┘
+           │ (Phases 1 + 2 must complete before Phase 3)
+           ▼
+Phase 3: Customer Agent ───────────────────────────────┐
+                                                        │
+           ┌────────────────────────────────────────────┘
+           │ (Phase 3 must complete before Phase 4)
+           ▼
+Phase 4: Orchestrator + API ───────────────────────────┐
+                                                        │
+           ┌────────────────────────────────────────────┤
+           │ (Phase 4 must complete before Phases 5-7)  │
+           ▼                                            ▼
+Phase 5: Frontend Dashboard          Phase 6: Nudge Scheduler
+           │                                   │
+           │         Phase 7: Order Modification
+           │              (needs Phases 4 + 5)
+           │                    │
+           └────────┬───────────┘
+                    ▼
+          Phase 8: Integration & Demo Polish
+```
+
+**Parallelisation opportunities:**
+- Phase 1 (data) and Phase 2 (WhatsApp) can be done in parallel by different team members
+- Phase 5 (frontend) and Phase 6 (nudge scheduler) can be done in parallel once Phase 4 is complete
+- Phase 0 should be done first by one person, then everyone branches out
+
+---
+
 ## Sources
 
 - [Choco OrderAgent](https://choco.com/us/orderagent) — AI order processing for food distributors
