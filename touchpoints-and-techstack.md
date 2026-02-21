@@ -16,6 +16,7 @@
 │                  │         │ • Finance/credit      │         │   wholesalers    │
 └─────────────────┘         └──────────────────────┘         └─────────────────┘
 ```
+# Edit: We are not concerned with suppliers for this Hackathon. Please assume that Wholesalers have infinite supply. In other words, do not concern yourself with the supply proglem for wholesalers.
 
 ### The 12 Touchpoints — Prioritised by Agent Impact
 
@@ -27,6 +28,9 @@ We analysed every touchpoint in the wholesaler ↔ customer relationship. Here's
 
 ##### 1. Order Placement (Multi-Channel Inbox)
 **Current state:** 70–80% of orders arrive via phone, fax, WhatsApp, email. Inside sales staff (Innendienst) manually transcribe 500–2,000 orders/day into the ERP. Error rates: 1–3%. After-hours orders (chefs order at 22:00–midnight) pile up as voicemails.
+# Edit: Please focus your communication channels. At least don't worry about implementing the Fax feature.
+# Edit: 500-2000 orders/day is higher than what we realistically expect our wholesalers to process. We focus on companies that have upt o 50 employees.
+# Edit: After-hourse orders can be accepted by our agents automatically (Voice AI). 
 
 **What our agent does:**
 - Ingests orders from **email, WhatsApp, voice (transcribed), photo of handwritten list, PDF/fax**
@@ -35,6 +39,7 @@ We analysed every touchpoint in the wholesaler ↔ customer relationship. Here's
 - Flags anomalies: "This customer usually orders 50 cases. They ordered 500. Confirm?"
 - Sends instant order confirmation back to customer via same channel
 - Works 24/7 — processes the 22:00 voicemails before the 6 AM shift starts
+# Edit: Involve manual override over confirmations. The wholesaler needs to confirm orders before confirmaiton is sent
 
 **Why this is our #1 wedge:**
 - Eliminates the single largest labour cost centre (inside sales team doing data entry)
@@ -49,6 +54,7 @@ We analysed every touchpoint in the wholesaler ↔ customer relationship. Here's
 - Sends personalised nudge via WhatsApp/email: "Hi Chef, sollen wir Ihre übliche Dienstagbestellung aufgeben? 20kg Hühnerbrust, 10kg Kartoffeln, 5L Olivenöl?"
 - Detects churn signals: declining order frequency, shrinking basket size, shift to cheaper products
 - Alerts the field rep with context: "Customer X is at risk. Order frequency down 40% over 4 weeks. Last complaint: late delivery on 12 Feb."
+# Edit: Do not necessarily implement switching to cheaper products. Assume customers want to always order the same, only adjust product quantity not type.
 
 **Why this is our #2 wedge:**
 - This is a **greenfield opportunity** — nobody is doing this well. Plato does sales intelligence for large distributors; nobody does proactive retention for the mid-market.
@@ -57,6 +63,7 @@ We analysed every touchpoint in the wholesaler ↔ customer relationship. Here's
 
 ##### 3. Smart Procurement (Upstream Ordering to Suppliers)
 **Current state:** Procurement team of 3–15 people manually evaluates 50–300 suppliers. Purchase orders go out via phone, email, fax. Price comparison is manual and labour-intensive. Compliance tracking (certifications, lot traceability) is in paper files.
+# Edit: Do not concern yourself with suppliers/procurement. 
 
 **What our agent does:**
 - Monitors inventory levels + incoming customer orders + demand forecasts
@@ -77,16 +84,21 @@ We analysed every touchpoint in the wholesaler ↔ customer relationship. Here's
 - Auto-confirm orders with line-by-line detail via WhatsApp/email
 - AI-powered substitution suggestions when items are out of stock
 - Self-service modification window for customers
+# Edit: This is a key feature and should be #3 Wedge
+# Edit: No self-service modification window for customers necessary, we want to focus on interactions with the Wholesaler only. Custoemrs come into this by messaging via their preferred channels with the wholesaler.
 
 ##### 5. Invoicing & Payment Intelligence
 - Predict which customers will pay late
 - Send proactive payment reminders
 - Auto-match incoming payments to invoices
 - Intelligent dunning (adjust tone by customer value)
+# Edit: Instead of payment reminders, etc. please just focus on sending over an invoice (if a customer wants it). This does not oinclude a payment link, etc. but rather just an overview of current balance, items placed, etc.
+
 
 ##### 6. Catalogue & Dynamic Pricing
 - Real-time personalised digital catalogue per customer
 - AI-driven pricing recommendations (margin targets × demand elasticity × competition)
+# Edit: Instead of this, I would like demand prediction intelligence. The Wholesaler can gather intelligence over likely demand in the coming weeks, times of year, etc. This is a nice to have.
 
 ---
 
@@ -100,6 +112,7 @@ We analysed every touchpoint in the wholesaler ↔ customer relationship. Here's
 | Delivery & route optimisation | Requires fleet telematics integration |
 | Returns & credits | Requires driver mobile app |
 | Reporting & analytics | Foundational but not a wedge differentiator |
+# Edit: None of this is necessary for now.
 
 ---
 
@@ -132,10 +145,12 @@ We analysed every touchpoint in the wholesaler ↔ customer relationship. Here's
                                                                │  PO Emails   │
                                                                └──────────────┘
 ```
+# Edit: For the MVP during the hackathon, focus on WhatsApp only.
 
 ### Key design principle: NO NEW TOOL FOR THE CUSTOMER
 
 The customer (restaurant chef) keeps using WhatsApp, email, and phone. They never download an app or log into a portal. The agent is invisible to them — they just notice that orders get confirmed faster, mistakes go down, and someone proactively reminds them to reorder.
+# Edit: Exactly!
 
 The **wholesaler** gets a dashboard to:
 - See all orders (auto-processed + flagged for review)
@@ -235,6 +250,10 @@ The **wholesaler** gets a dashboard to:
 │  └──────────────┘  └──────────────┘  └───────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
+# Edit: Please be more specific about how you divvy up the agents
+# Edit: We envision one containerised agent based on the context of a specific customer
+# Edit: Be more specific how the orchestration agent coordinates between containerised customer and wholesaler context. By containerised we mean a dedicated agent per customer (with customer context, e.g., order history, text messages, multi-modal interactions -> being the expert for that particular customer)
+# Edit: We have an idea of our agent architecture/interactions, please look at it and adjust your techstock accordingly. Now, having said that, the tasks per layer are quite accurate (e.g., WhatsApp Replies - Order confirm, etc.). Also note again that supplier related nodes need not feature in the MVP for the Hackathon. Be critical about our input, don't just blindly copy.
 
 ---
 
@@ -254,6 +273,7 @@ The **wholesaler** gets a dashboard to:
 | **Outbound messages** | Twilio (WhatsApp + SMS) + SMTP (email) | Reply on the same channel the order came from |
 | **Deployment** | Vercel (frontend) + Railway/Fly.io (backend) | Fast deployment, free tiers available |
 | **Scheduling** | APScheduler or Celery Beat | For periodic tasks: reorder nudges, procurement checks, churn scanning |
+# Edit: We'd like to connect to the Meta API, not just Twilio mockup
 
 ---
 
@@ -271,9 +291,11 @@ products  (id, name, name_de, sku, category, unit, price_default,
 
 suppliers (id, name, contact_email, contact_phone, lead_time_days,
            reliability_score, created_at)
+# Edit: Again, do not worry about suppliers.
 
 -- Customer-specific pricing
 customer_prices (customer_id, product_id, price, valid_from, valid_to)
+# Edit: If this is hard to implement, do not worry about customer-specific pricing.
 
 -- Orders (from customers)
 orders    (id, customer_id, channel, raw_message, status,
@@ -289,6 +311,7 @@ purchase_orders (id, supplier_id, status, total_amount,
                  created_at, sent_at, expected_delivery)
 
 po_items  (id, purchase_order_id, product_id, quantity, unit_cost)
+# Edit: Again, do not worry about suppliers. Assume infinite stock for now.
 
 -- Agent activity log
 agent_actions (id, agent_type, action, entity_type, entity_id,
@@ -308,6 +331,7 @@ order_patterns (customer_id, product_id, avg_interval_days,
 ---
 
 ### Agent Design: How the Three Agents Work
+# Edit: update the agent design based on the techstock/architecture we specified. Roughly speaking, we want to represent each customer as an agent, so it learns the context of that customer. This customer agent turns custoemr messages into orders (so the Order Parser). We also want an agent representing the wholesaler, that communicates with each customer agent. Any other agents that serve intermediate steps, please feel free to suggest them.
 
 #### Agent 1: Order Parser
 
@@ -452,3 +476,12 @@ TOOLS:
 - [addHelix](https://www.addhelix.com/en/tourenplanung-fuer-grosshandel-lebensmittel-und-getraenkelogistik/) — Route planning for food wholesale
 - [Twilio WhatsApp API](https://www.twilio.com/whatsapp) — WhatsApp Business integration
 - [Twilio Voice + Whisper](https://www.twilio.com/voice) — Voice ingestion + transcription
+
+
+# Overarching edits:
+# - Use SKILL.md from Anthropic for front-end design (in the same GitHub repo). In general, suggest fron-end design in detail.
+# - Use the supplied architecture input to adjust your agentic infrastructure. The specific Tech Choices are fine. This is specified in demo_logic.md (also in the same GitHub repo)
+# - Re-write this file to serve as an iteration for the implementation of the app.
+# - Do not use german examples, use english.
+
+# - Do not implement yet.
