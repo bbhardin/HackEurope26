@@ -480,7 +480,7 @@ TOOLS:
 
 # Overarching edits:
 # - Use SKILL.md from Anthropic for front-end design (in the same GitHub repo). In general, suggest fron-end design in detail.
-# - Use the supplied architecture input to adjust your agentic infrastructure. The specific Tech Choices are fine. This is specified in demo_logic.md (also in the same GitHub repo)
+# - Use the supplied architecture input to adjust your agentic infrastructure. The specific Tech Choices are fine. This is specified in demo_logic.md (also in the same GitHub repo). The file outlines an example use. Please base your architecture on that example.
 # - Re-write this file to serve as an iteration for the implementation of the app.
 # - Do not use german examples, use english.
 
