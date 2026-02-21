@@ -164,6 +164,7 @@ Each order shows its own line items, but there is no aggregate view. A wholesale
 1. **Backend query**: A single SQL query that JOINs `order_items` → `orders` → `products`, filters by order status (default: `confirmed` — i.e., orders accepted but not yet fulfilled), and `GROUP BY product_id` with `SUM(quantity)`.
 
 2. **New sidebar page "Fulfilment"**: A table with columns: Product Name, SKU, Category, Unit, Total Quantity Needed, Number of Orders. Sortable by category or quantity. This gives the warehouse team a single pick list.
+# Edit: Don't name it fulfilment, come up with a name that resembles "aggregate View" more
 
 3. **Status filter**: A dropdown at the top to switch between "Confirmed" (default, orders to fulfil), "Pending" (preview of what's coming), or "All active" (pending + confirmed combined).
 
@@ -327,6 +328,8 @@ The system only tracks WhatsApp messages that flow through the webhook. If the w
 
 ### Complexity: Low–Medium
 The data model already supports this. The main work is the frontend form and the optional keyword detection for order-relevant communication.
+
+# Edit: Point 10 is a good point. Please keep it. On top of that, we would like to implement logging of outgoing messages. In other words, a customer texts the wholesaler via WhatsApp and that is played into the dashboard. Now, equally, the wholesaler can text the customer via WhatsApp back. This should also be logged in the application and, if relevant, affect the order details. For example, if outgoing message says "I will edit your order to 1 bag less of coffee" and the custoemr replies "Sounds good", the order should be adapted accordingly.
 
 ---
 
