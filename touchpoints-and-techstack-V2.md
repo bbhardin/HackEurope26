@@ -257,6 +257,7 @@ A **Wholesaler Orchestrator Agent** sits above all customer agents, coordinating
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+
 ### Agent Summary
 
 | Agent | Scope | Lifecycle | Key Responsibility |
@@ -284,6 +285,7 @@ A **Wholesaler Orchestrator Agent** sits above all customer agents, coordinating
 | **Deployment** | Vercel (frontend) + Railway/Fly.io (backend) | Fast deployment, free tiers available |
 | **Scheduling** | APScheduler or Celery Beat | For periodic tasks: reorder nudges, churn scanning |
 | **Webhook** | FastAPI endpoint | Receives WhatsApp webhook callbacks from Meta API |
+# Edit: For deployment, can you explore OpenShift. If Vercel is good, stick to it, though. We need it to be free.
 
 ### Frontend Design Direction
 
@@ -299,6 +301,7 @@ The wholesaler dashboard should be built following the principles in `SKILL.md` 
 - **Typography**: Choose a distinctive, highly legible sans-serif for data display; pair with a characterful display font for headings
 - **Colour system**: Status-driven — green (confirmed), amber (pending), red (flagged/churn risk). Neutral background, bold status accents.
 - **Motion**: Subtle transitions for new orders appearing in the queue; smooth approve/reject animations
+# Edit: For core views, can you add an overview of the total order value across all customers (which, given we have only 1 custoemr modelled int he demo the same as the order values of that customer).
 
 ---
 
@@ -396,6 +399,7 @@ order_patterns (customer_id, product_id, avg_interval_days,
 | **Authentication** | None (demo mode) | SSO, role-based access |
 | **Deployment** | Local + demo URL | Multi-tenant SaaS |
 | **Language** | English | + German, French, Dutch, Italian, Polish |
+# Edit: Focus on English only.
 
 ---
 
@@ -408,3 +412,7 @@ order_patterns (customer_id, product_id, avg_interval_days,
 - [Meta WhatsApp Business Platform](https://developers.facebook.com/docs/whatsapp/cloud-api) — WhatsApp Cloud API documentation
 - [SKILL.md](./SKILL.md) — Frontend design skill reference
 - [demo_logic.md](./demo_logic.md) — Architecture flow reference
+
+# Edit: Create two versions. One focussing on delivery (implementation), and one for presentation.
+
+# Do not implement yet
