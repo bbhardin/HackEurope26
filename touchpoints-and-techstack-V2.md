@@ -413,6 +413,6 @@ order_patterns (customer_id, product_id, avg_interval_days,
 - [SKILL.md](./SKILL.md) — Frontend design skill reference
 - [demo_logic.md](./demo_logic.md) — Architecture flow reference
 
-# Edit: Create two versions. One focussing on delivery (implementation), and one for presentation.
+# Edit: Create two versions. One focussing on delivery (implementation), and one for presentation (pitch, storyline, fundraising).
 
 # Do not implement yet
