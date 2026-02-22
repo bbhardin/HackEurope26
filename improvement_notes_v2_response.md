@@ -352,6 +352,7 @@ When a customer sends an image via WhatsApp, the system downloads it, converts t
 3. **Frontend**: In the conversation timeline, if `image_url` is set, display a small thumbnail of the image alongside the message text. Clicking the thumbnail opens it full-size.
 
 4. **Order history reflection**: When an order is created from an image-based message, the `raw_message` field stores the extracted text and the `image_url` is linked through the conversation record.
+# Edit: Here again, please confirm the order with the customers, similar to how you did it with the recurring order phrsing (e.g., "the usual") in 1.1.3
 
 ### Complexity: Medium–High
 
@@ -506,6 +507,7 @@ When an unknown phone number sends a message, `pipeline.py` creates an alert of 
 - Use Celery or similar task queue for LLM processing
 
 **Recommendation**: Implement Approach A — it's 90% of the benefit with minimal code change. The key insight is: the webhook must return immediately, and the Anthropic client must be async. Everything else is secondary.
+# Edit: Please use Approach A.
 
 ### Complexity: Medium
 
