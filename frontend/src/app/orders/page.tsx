@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { getOrders, approveOrder, rejectOrder, fulfilOrder, sendOrderMessage, clarifyOrder, updateOrderItems, searchProducts, reclassifyOrder, getOrderSuggestions } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import type { Order, Product, DetectedOrderChange } from "@/lib/types";
@@ -10,8 +11,9 @@ function formatQty(qty: number, unitType: string) {
 }
 
 export default function OrdersPage() {
+  const searchParams = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [filter, setFilter] = useState("pending_confirmation");
+  const [filter, setFilter] = useState(searchParams.get("filter") ?? "pending_confirmation");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
   const [msgInputs, setMsgInputs] = useState<Record<string, string>>({});

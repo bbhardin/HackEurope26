@@ -137,11 +137,11 @@ export default function OverviewPage() {
 
       {overview && (
         <div className="grid grid-cols-5 gap-4 mb-8">
-          <KpiCard label="Pending" value={String(overview.pending_count)} sub={`EUR ${overview.pending_value.toLocaleString()}`} color="var(--color-amber)" href="/orders"
+          <KpiCard label="Pending" value={String(overview.pending_count)} sub={`EUR ${overview.pending_value.toLocaleString()}`} color="var(--color-amber)" href="/orders?filter=pending_confirmation"
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
-          <KpiCard label="Confirmed" value={String(overview.confirmed_all_count)} sub={`EUR ${overview.confirmed_all_value.toLocaleString()}`} color="#22d3ee" href="/orders"
+          <KpiCard label="Confirmed" value={String(overview.confirmed_all_count)} sub={`EUR ${overview.confirmed_all_value.toLocaleString()}`} color="#22d3ee" href="/orders?filter=confirmed"
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>} />
-          <KpiCard label="Fulfilled Today" value={String(overview.fulfilled_today_count)} sub={`EUR ${overview.fulfilled_today_value.toLocaleString()}`} color="var(--color-green)" href="/orders"
+          <KpiCard label="Fulfilled Today" value={String(overview.fulfilled_today_count)} sub={`EUR ${overview.fulfilled_today_value.toLocaleString()}`} color="var(--color-green)" href="/orders?filter=fulfilled"
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>} />
           <KpiCard label="Total Fulfilled" value={String(overview.fulfilled_all_count)} sub={`EUR ${overview.fulfilled_all_value.toLocaleString()}`} color="var(--color-accent)" href="/orders" />
           <KpiCard label="Flagged / Rejected" value={`${overview.flagged_count} / ${overview.rejected_count}`} color="var(--color-red)" href="/orders" />
