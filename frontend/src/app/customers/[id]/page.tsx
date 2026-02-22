@@ -129,7 +129,16 @@ export default function CustomerDetailPage() {
                     </span>
                   )}
                 </div>
-                <p className="text-sm">{conv.message_text.slice(0, 150)}</p>
+                {conv.message_text.startsWith("[IMAGE:") ? (
+                  <img
+                    src={`data:image/jpeg;base64,${conv.message_text.slice(7, -1)}`}
+                    alt="Customer image"
+                    className="max-w-xs rounded mt-1"
+                    style={{ maxHeight: "200px", objectFit: "contain" }}
+                  />
+                ) : (
+                  <p className="text-sm">{conv.message_text.slice(0, 150)}</p>
+                )}
               </div>
             ))}
           </div>

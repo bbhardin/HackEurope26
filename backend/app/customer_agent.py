@@ -22,6 +22,8 @@ SYSTEM_PROMPT = """You are a Customer Agent for a food & beverage wholesaler. Yo
 
 You have access to the customer's full context including their order history, typical basket, and preferences. Use this context to understand what they want.
 
+You may receive text messages or images (e.g. handwritten order lists, photos of products or invoices). For images, analyse the visual content carefully to extract order information.
+
 Your job:
 1. Classify the intent of the message into one of:
    - place_order: Customer wants to place a new order
@@ -111,12 +113,13 @@ def _execute_tool(tool_name: str, tool_input: dict, customer_id: str) -> str:
         return json.dumps(simplified)
 
     if tool_name == "flag_anomaly":
+        sigme("anomaly_flagged", True)
         return json.dumps({"flagged": True, "reason": tool_input["reason"]})
 
     return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
 
-def _build_user_message(customer_id: str, text_content: str, message_type: str) -> str:
+def _build_user_message(customer_id: str, text_content: str, message_type: str) -> str | list:
     context = get_customer_context(customer_id)
     patterns = get_order_patterns(customer_id)
 
@@ -129,7 +132,7 @@ def _build_user_message(customer_id: str, text_content: str, message_type: str) 
     if customer_pending:
         pending_str = f"\n\nPENDING ORDERS FOR THIS CUSTOMER:\n{json.dumps(customer_pending, indent=2)}"
 
-    return f"""CUSTOMER CONTEXT:
+    prefix = f"""CUSTOMER CONTEXT:
 {context_str}
 
 ORDER PATTERNS:
@@ -137,14 +140,14 @@ ORDER PATTERNS:
 {pending_str}
 
 INCOMING MESSAGE (type: {message_type}):
-{text_content}
+"""
 
-Please classify the intent and parse any order items. Return your analysis as a JSON object with this structure:
-{{
+    suffix = """Please classify the intent and parse any order items. Return your analysis as a JSON object with this structure:
+{
   "intent": "place_order|repeat_order|modify_order|remind_last_order|general_inquiry",
   "confidence": 0.0-1.0,
   "items": [
-    {{
+    {
       "product_id": "prod-xxx",
       "product_name": "Product Name",
       "quantity": 10,
@@ -152,23 +155,44 @@ Please classify the intent and parse any order items. Return your analysis as a 
       "unit_price": 4.20,
       "original_text": "what the customer said",
       "matched_confidence": 0.95
-    }}
+    }
   ],
   "anomalies": ["list of any flagged issues"],
   "response_text": "suggested response to send to customer",
   "notes": "any additional notes for the wholesaler"
-}}"""
+}"""
 
+    if message_type == "image" and text_content.startswith("[IMAGE:"):
+        b64_data = text_content[7:-1]
+        return [
+            {"type": "text", "text": prefix},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64_data}},
+            {"type": "text", "text": suffix},
+        ]
 
+    return prefix + text_content + "\n\n" + suffix
+
+#@paid_tracing("testcustomer", external_product_id="test-external")
 async def run_customer_agent(customer_id: str, text_content: str, message_type: str = "text") -> dict:
+    #export PAID_API_KEY=
     if not client:
+        print("HERE0")
         return _fallback_parse(customer_id, text_content)
 
     user_message = _build_user_message(customer_id, text_content, message_type)
 
+    print("HERE3")
+    #sigme("chat_completion")
+    print("WOWZA")
+
     try:
         messages: list[dict] = [{"role": "user", "content": user_message}]
 
+        print("-")
+        # from paid import Paid
+        # paid = Paid(token="6e918259-b19f-417b-a37d-338e9e4d5dbd")
+        # paid.signals.create(customer_id="cus_5hgEqXKUroR", event="api_call")
+        print("woah")
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
@@ -176,6 +200,52 @@ async def run_customer_agent(customer_id: str, text_content: str, message_type: 
             tools=TOOLS,
             messages=messages,
         )
+        print("--")
+        # from paid import Paid
+        # import paid
+        # # paid api 2 6e918259-b19f-417b-a37d-338e9e4d5dbd
+
+        #customer = paid.customers.create_customer(name="Acme Corp", email="acme@example.com")  
+        # THIS ABOVE WORKS
+        
+        #paid.signals.create(customer_id="cus_5hg6bnudnWT", event="api_call")
+
+        # paid.usage.record_bulk_v2(signals=[
+        #     SignalV2(
+        #         event_name="email_sent",
+        #         product_id="YOUR_PRODUCT_ID",
+        #         customer_id="YOUR_CUSTOMER_ID",
+        #         data={"subject": "Follow-up"}
+        #     )
+        # ])
+        print("thing")
+    
+        #signal("chat_completion")#, enable_cost_tracing=True)
+
+        print("did a thing")
+        
+
+        # Record usage / trigger billing
+        #paid.signals.create(customer_id="customer_123", event="api_call")
+                # paid.usage.record(
+        #     eventName="chat_completion",
+        #     externalCustomerId="cus_5hg6bnudnWT",  # Your customer ID
+        #     externalProductId="prod_5hg6X4dxa8F",  # Your product ID
+        # )
+
+        # Send a usage signal
+        # paid.usage.usage_record_bulk_v_2(
+        #     event_name="api_calls",  # Must match your product's configured event name
+        #     external_customer_id="customer_123",  # Your customer ID
+        #     external_product_id="product_456",  # Your product ID
+        # )
+        # paid.customers.create_customer(
+        #     name="delete_me"
+        # )
+
+        #signal("chat_completion", True)
+
+        print("HERE1")
 
         while response.stop_reason == "tool_use":
             tool_results = []
@@ -199,6 +269,9 @@ async def run_customer_agent(customer_id: str, text_content: str, message_type: 
                 tools=TOOLS,
                 messages=messages,
             )
+            # signal("chat_completion", True)
+
+        print("HERE")
 
         result_text = ""
         for block in response.content:
