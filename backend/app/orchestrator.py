@@ -1,3 +1,4 @@
+import json
 import logging
 
 from app.crud import (
@@ -25,7 +26,13 @@ async def handle_agent_output(customer: dict, agent_output: dict, raw_message: s
     items = agent_output.get("items", [])
     anomalies = agent_output.get("anomalies", [])
 
-    if intent in ("place_order", "repeat_order"):
+    source = agent_output.get("source", "text")
+
+    if intent == "repeat_order":
+        await _handle_repeat_order_intent(customer, agent_output, raw_message, items, anomalies)
+    elif intent == "place_order" and source == "image":
+        await _handle_image_order_intent(customer, agent_output, raw_message, items, anomalies)
+    elif intent == "place_order":
         await _handle_order_intent(customer, agent_output, raw_message, items, anomalies)
     elif intent == "modify_order":
         await _handle_modify_intent(customer, agent_output, raw_message)
@@ -74,7 +81,8 @@ async def _handle_order_intent(
     has_low_confidence = len(low_confidence_items) > 0
 
     if has_low_confidence:
-        status = "needs_clarification"
+        status = "flagged"
+        flags.append("Low confidence: items need verification")
     elif has_anomalies:
         status = "flagged"
     else:
@@ -109,6 +117,123 @@ async def _handle_order_intent(
             "total_value": order["total_value"],
             "flags": flags,
             "status": status,
+        },
+        agent_output.get("confidence"),
+    )
+
+
+async def _handle_image_order_intent(
+    customer: dict,
+    agent_output: dict,
+    raw_message: str,
+    items: list[dict],
+    anomalies: list[str],
+) -> None:
+    if not items:
+        await _handle_order_intent(customer, agent_output, raw_message, items, anomalies)
+        return
+
+    lines = ["We read the following items from your image:"]
+    for item in items:
+        name = item.get("product_name", item.get("product_id", "Unknown"))
+        qty = item.get("quantity", 0)
+        unit = item.get("unit", "")
+        lines.append(f"  - {qty}{unit} {name}")
+    lines.append("Is this correct? Reply 'Yes' to confirm or send corrections.")
+    confirmation_msg = "\n".join(lines)
+
+    await send_whatsapp_message(customer["contact_whatsapp"], confirmation_msg)
+    save_conversation(customer["id"], "outbound", confirmation_msg, "image_order_confirmation")
+
+    order_items = []
+    for item in items:
+        order_items.append({
+            "product_id": item["product_id"],
+            "quantity": item["quantity"],
+            "unit_price": item["unit_price"],
+            "matched_confidence": item.get("matched_confidence", 0.9),
+            "original_text": item.get("original_text", ""),
+        })
+
+    flags = list(anomalies) if anomalies else []
+    flags.append("Awaiting customer confirmation of image-parsed order")
+
+    order = create_order(
+        customer_id=customer["id"],
+        raw_message=raw_message,
+        items=order_items,
+        status="flagged",
+        flags=flags,
+    )
+
+    log_agent_action(
+        "orchestrator",
+        "image_order_confirmation_sent",
+        "order",
+        order["id"],
+        {
+            "intent": "place_order",
+            "source": "image",
+            "item_count": len(items),
+            "total_value": order["total_value"],
+        },
+        agent_output.get("confidence"),
+    )
+
+
+async def _handle_repeat_order_intent(
+    customer: dict,
+    agent_output: dict,
+    raw_message: str,
+    items: list[dict],
+    anomalies: list[str],
+) -> None:
+    if not items:
+        await _handle_order_intent(customer, agent_output, raw_message, items, anomalies)
+        return
+
+    lines = [f"Can I confirm that by 'the usual' you mean:"]
+    for item in items:
+        name = item.get("product_name", item.get("product_id", "Unknown"))
+        qty = item.get("quantity", 0)
+        unit = item.get("unit", "")
+        lines.append(f"  - {qty}{unit} {name}")
+    lines.append("Reply 'Yes' to confirm or send corrections.")
+    confirmation_msg = "\n".join(lines)
+
+    await send_whatsapp_message(customer["contact_whatsapp"], confirmation_msg)
+    save_conversation(customer["id"], "outbound", confirmation_msg, "repeat_order_confirmation")
+
+    order_items = []
+    for item in items:
+        order_items.append({
+            "product_id": item["product_id"],
+            "quantity": item["quantity"],
+            "unit_price": item["unit_price"],
+            "matched_confidence": item.get("matched_confidence", 0.9),
+            "original_text": item.get("original_text", ""),
+        })
+
+    flags = list(anomalies) if anomalies else []
+    flags.append("Awaiting customer confirmation of repeat order")
+
+    order = create_order(
+        customer_id=customer["id"],
+        raw_message=raw_message,
+        items=order_items,
+        status="flagged",
+        flags=flags,
+    )
+
+    log_agent_action(
+        "orchestrator",
+        "repeat_order_confirmation_sent",
+        "order",
+        order["id"],
+        {
+            "intent": "repeat_order",
+            "item_count": len(items),
+            "total_value": order["total_value"],
         },
         agent_output.get("confidence"),
     )
@@ -208,6 +333,13 @@ async def _handle_general_intent(customer: dict, agent_output: dict) -> None:
 
     await send_whatsapp_message(customer["contact_whatsapp"], response)
     save_conversation(customer["id"], "outbound", response, "general_inquiry")
+
+    create_alert(
+        "incoming_message",
+        customer["id"],
+        f"Non-order message from {customer['name']}: {response[:200]}",
+    )
+
     log_agent_action("orchestrator", "general_response", "customer", customer["id"], {"response_preview": response[:200]})
 
 
@@ -379,6 +511,75 @@ async def send_manual_message(customer_id: str, message_text: str, order_id: str
         logger.warning("Outbound analysis failed: %s", e)
 
     return {"status": "sent", "detected_changes": detected_changes}
+
+
+async def generate_suggested_messages(customer_id: str, order_id: str = "") -> list[str]:
+    from app.customer_agent import client as anthropic_client
+
+    customer = get_customer_by_id(customer_id)
+    if not customer:
+        return []
+
+    context = get_customer_context(customer_id)
+    history = get_customer_order_history(customer_id, 3)
+
+    order_info = ""
+    if order_id:
+        order = get_order_by_id(order_id)
+        if order:
+            items_str = ", ".join(f"{i['quantity']}{i.get('unit', '')} {i.get('product_name', '')}" for i in order.get("items", []))
+            order_info = f"\nCurrent order ({order['status']}): {items_str}, total EUR {order['total_value']:.2f}"
+
+    if not anthropic_client:
+        if order_id:
+            return [
+                "Your order has been received and is being reviewed.",
+                "We need to adjust an item on your order — details to follow.",
+                "Your order is ready for dispatch.",
+            ]
+        return [
+            "Thank you for your message, we'll get back to you shortly.",
+            "Our delivery hours are 6am–2pm Monday–Saturday.",
+            "Would you like to place your usual order?",
+        ]
+
+    try:
+        prompt = f"""Generate 3 short WhatsApp messages a food wholesaler might send to this customer.
+Customer: {customer['name']} ({customer['type']})
+Context: {json.dumps(context) if context else 'No context'}
+Recent orders: {len(history)} orders{order_info}
+
+Return a JSON array of 3 strings. Keep them professional, concise, and actionable."""
+
+        response = await anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        result_text = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                result_text += block.text
+
+        json_start = result_text.find("[")
+        json_end = result_text.rfind("]") + 1
+        if json_start >= 0 and json_end > json_start:
+            return json.loads(result_text[json_start:json_end])
+    except Exception as e:
+        logger.error("Failed to generate suggestions: %s", e)
+
+    if order_id:
+        return [
+            "Your order has been received and is being reviewed.",
+            "We need to adjust an item on your order — details to follow.",
+            "Your order is ready for dispatch.",
+        ]
+    return [
+        "Thank you for your message, we'll get back to you shortly.",
+        "Our delivery hours are 6am–2pm Monday–Saturday.",
+        "Would you like to place your usual order?",
+    ]
 
 
 async def send_clarification(order_id: str, message_text: str) -> dict:

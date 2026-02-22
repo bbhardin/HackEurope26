@@ -123,27 +123,34 @@ async def send_whatsapp_message(phone_number: str, message_text: str) -> bool:
             return False
 
 
-async def process_incoming_message(msg: IncomingMessage) -> str:
+@dataclass
+class ProcessedMessage:
+    text: str
+    image_base64: str
+
+
+async def process_incoming_message(msg: IncomingMessage) -> ProcessedMessage:
     if msg.message_type == "text":
-        return msg.text_body
+        return ProcessedMessage(text=msg.text_body, image_base64="")
 
     if msg.message_type == "voice":
         try:
             audio_bytes = await download_media(msg.media_id)
             transcript = await transcribe_voice(audio_bytes)
-            return transcript
+            return ProcessedMessage(text=transcript, image_base64="")
         except Exception as e:
             logger.error("Voice processing failed: %s", e)
-            return "[Voice message — processing failed]"
+            return ProcessedMessage(text="[Voice message — processing failed]", image_base64="")
 
     if msg.message_type == "image":
         try:
             image_bytes = await download_media(msg.media_id)
             b64 = await image_to_base64(image_bytes)
-            return f"[IMAGE:{b64}]"
+            caption = msg.text_body or ""
+            return ProcessedMessage(text=caption, image_base64=b64)
         except Exception as e:
             logger.error("Image processing failed: %s", e)
             caption = msg.text_body or "[Image — processing failed]"
-            return caption
+            return ProcessedMessage(text=caption, image_base64="")
 
-    return msg.text_body or "[Unsupported message type]"
+    return ProcessedMessage(text=msg.text_body or "[Unsupported message type]", image_base64="")

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getOrders, approveOrder, rejectOrder, fulfilOrder, sendOrderMessage, clarifyOrder, updateOrderItems, searchProducts } from "@/lib/api";
+import { getOrders, approveOrder, rejectOrder, fulfilOrder, sendOrderMessage, clarifyOrder, updateOrderItems, searchProducts, reclassifyOrder, getOrderSuggestions } from "@/lib/api";
+import { useToast } from "@/components/Toast";
 import type { Order, Product, DetectedOrderChange } from "@/lib/types";
 
 function formatQty(qty: number, unitType: string) {
@@ -21,6 +22,8 @@ export default function OrdersPage() {
   const [productResults, setProductResults] = useState<Product[]>([]);
   const [detectedChanges, setDetectedChanges] = useState<DetectedOrderChange[]>([]);
   const [changeOrderId, setChangeOrderId] = useState("");
+  const [suggestions, setSuggestions] = useState<Record<string, string[]>>({});
+  const { showToast } = useToast();
 
   const loadOrders = useCallback(async () => {
     try {
@@ -39,19 +42,19 @@ export default function OrdersPage() {
 
   const handleApprove = async (orderId: string) => {
     setProcessing(orderId);
-    try { await approveOrder(orderId); loadOrders(); } catch (e) { console.error(e); }
+    try { await approveOrder(orderId); showToast("Order confirmed"); loadOrders(); } catch (e) { console.error(e); showToast("Failed to confirm order", "error"); }
     setProcessing(null);
   };
 
   const handleReject = async (orderId: string) => {
     setProcessing(orderId);
-    try { await rejectOrder(orderId); loadOrders(); } catch (e) { console.error(e); }
+    try { await rejectOrder(orderId); showToast("Order declined"); loadOrders(); } catch (e) { console.error(e); showToast("Failed to decline order", "error"); }
     setProcessing(null);
   };
 
   const handleFulfil = async (orderId: string) => {
     setProcessing(orderId);
-    try { await fulfilOrder(orderId); loadOrders(); } catch (e) { console.error(e); }
+    try { await fulfilOrder(orderId); showToast("Order dispatched"); loadOrders(); } catch (e) { console.error(e); showToast("Failed to dispatch order", "error"); }
     setProcessing(null);
   };
 
@@ -65,11 +68,13 @@ export default function OrdersPage() {
       if (result.detected_changes && result.detected_changes.length > 0) {
         setDetectedChanges(result.detected_changes);
         setChangeOrderId(orderId);
-        setMsgStatus({ ...msgStatus, [orderId]: "Sent! Order changes detected — see prompt below." });
+        showToast("Sent via WhatsApp — order changes detected", "info");
       } else {
-        setMsgStatus({ ...msgStatus, [orderId]: "Sent!" });
+        showToast("Sent via WhatsApp");
       }
+      setMsgStatus({ ...msgStatus, [orderId]: "" });
     } catch (e) {
+      showToast("Failed to send message", "error");
       setMsgStatus({ ...msgStatus, [orderId]: `Error: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
@@ -143,6 +148,12 @@ export default function OrdersPage() {
     } catch (e) { console.error(e); }
   };
 
+  const handleReclassify = async (orderId: string, newStatus: string) => {
+    setProcessing(orderId);
+    try { await reclassifyOrder(orderId, newStatus); loadOrders(); } catch (e) { console.error(e); }
+    setProcessing(null);
+  };
+
   const statusColor = (status: string) => {
     switch (status) {
       case "fulfilled": return "var(--color-green)";
@@ -158,7 +169,6 @@ export default function OrdersPage() {
   const filters = [
     { value: "pending_confirmation", label: "Pending" },
     { value: "flagged", label: "Flagged" },
-    { value: "needs_clarification", label: "Clarification" },
     { value: "confirmed", label: "Confirmed" },
     { value: "fulfilled", label: "Fulfilled" },
     { value: "rejected", label: "Rejected" },
@@ -196,7 +206,13 @@ export default function OrdersPage() {
           const isEditing = editingOrder === order.id;
           return (
             <div key={order.id} className="rounded-lg border transition-colors" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-              <div className="flex items-center justify-between px-5 py-4 cursor-pointer" onClick={() => setExpanded(expanded === order.id ? null : order.id)}>
+              <div className="flex items-center justify-between px-5 py-4 cursor-pointer" onClick={() => {
+                const newExpanded = expanded === order.id ? null : order.id;
+                setExpanded(newExpanded);
+                if (newExpanded && !suggestions[order.id]) {
+                  getOrderSuggestions(order.id).then(s => setSuggestions(prev => ({ ...prev, [order.id]: s }))).catch(() => {});
+                }
+              }}>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold">{order.customer_name}</p>
@@ -213,19 +229,13 @@ export default function OrdersPage() {
                   </div>
                   {(order.status === "pending_confirmation" || order.status === "flagged") && (
                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleApprove(order.id)} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ background: "var(--color-green)", color: "#fff" }}>{processing === order.id ? "..." : "Approve"}</button>
-                      <button onClick={() => handleReject(order.id)} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ background: "var(--color-red)", color: "#fff" }}>Reject</button>
+                      <button onClick={() => handleApprove(order.id)} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ background: "var(--color-green)", color: "#fff" }}>{processing === order.id ? "..." : "Confirm Order"}</button>
+                      <button onClick={() => handleReject(order.id)} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ background: "var(--color-red)", color: "#fff" }}>Decline</button>
                     </div>
                   )}
                   {order.status === "confirmed" && (
                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleFulfil(order.id)} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ background: "var(--color-accent)", color: "#fff" }}>Mark Fulfilled</button>
-                    </div>
-                  )}
-                  {order.status === "needs_clarification" && (
-                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleApprove(order.id)} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ background: "var(--color-green)", color: "#fff" }}>Approve Anyway</button>
-                      <button onClick={() => handleReject(order.id)} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ background: "var(--color-red)", color: "#fff" }}>Reject</button>
+                      <button onClick={() => handleFulfil(order.id)} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-semibold cursor-pointer disabled:opacity-50" style={{ background: "var(--color-accent)", color: "#fff" }}>Dispatch Order</button>
                     </div>
                   )}
                 </div>
@@ -311,13 +321,32 @@ export default function OrdersPage() {
                     </div>
                   )}
 
+                  {order.status === "flagged" && (
+                    <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--color-border)" }}>
+                      <p className="text-xs font-medium mb-2" style={{ color: "var(--color-text-muted)" }}>Reclassify Order</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleReclassify(order.id, "pending_confirmation")} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer disabled:opacity-50 border" style={{ borderColor: "var(--color-green)", color: "var(--color-green)" }}>This is a valid order</button>
+                        <button onClick={() => handleReclassify(order.id, "rejected")} disabled={processing === order.id} className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer disabled:opacity-50 border" style={{ borderColor: "var(--color-red)", color: "var(--color-red)" }}>Not an order</button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--color-border)" }}>
                     <p className="text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Send Message to Customer</p>
+                    {suggestions[order.id] && suggestions[order.id].length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {suggestions[order.id].map((s, i) => (
+                          <button key={i} onClick={() => setMsgInputs({ ...msgInputs, [order.id]: s })} className="text-xs px-2 py-1 rounded border cursor-pointer transition-colors" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
+                            {s.slice(0, 60)}{s.length > 60 ? "..." : ""}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <input value={msgInputs[order.id] || ""} onChange={(e) => setMsgInputs({ ...msgInputs, [order.id]: e.target.value })} placeholder="Type a message..."
                         className="flex-1 px-3 py-2 rounded border text-sm" style={{ background: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }} />
-                      <button onClick={() => handleSendMessage(order.id)} className="px-3 py-2 rounded text-xs font-medium cursor-pointer" style={{ background: "var(--color-accent)", color: "#fff" }}>Send</button>
-                      {order.status === "needs_clarification" && (
+                      <button onClick={() => handleSendMessage(order.id)} className="px-3 py-2 rounded text-xs font-medium cursor-pointer" style={{ background: "var(--color-accent)", color: "#fff" }}>Send via WhatsApp</button>
+                      {order.status === "flagged" && (
                         <button onClick={() => handleClarify(order.id)} className="px-3 py-2 rounded text-xs font-medium cursor-pointer border" style={{ borderColor: "var(--color-amber)", color: "var(--color-amber)" }}>Clarify</button>
                       )}
                     </div>

@@ -11,6 +11,8 @@ import type {
   ManualMessageResponse,
   Product,
   EditableItem,
+  NudgeSuggestion,
+  CreateProductInput,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -140,6 +142,21 @@ export async function triggerNudgeScan(): Promise<Record<string, number | string
   return fetchJson<Record<string, number | string>>("/api/nudge/run", { method: "POST" });
 }
 
+export async function getNudgeSuggestions(): Promise<NudgeSuggestion[]> {
+  return fetchJson<NudgeSuggestion[]>("/api/nudge/suggestions");
+}
+
+export async function sendNudge(nudgeId: string, customMessage?: string): Promise<Record<string, string>> {
+  return fetchJson<Record<string, string>>(`/api/nudge/suggestions/${nudgeId}/send`, {
+    method: "POST",
+    body: JSON.stringify({ custom_message: customMessage || null }),
+  });
+}
+
+export async function dismissNudge(nudgeId: string): Promise<Record<string, string>> {
+  return fetchJson<Record<string, string>>(`/api/nudge/suggestions/${nudgeId}/dismiss`, { method: "POST" });
+}
+
 export async function simulateMessage(phone: string, message: string): Promise<void> {
   await fetchJson<Record<string, string>>("/api/simulate/message", {
     method: "POST",
@@ -147,6 +164,50 @@ export async function simulateMessage(phone: string, message: string): Promise<v
   });
 }
 
+export async function getOrderSuggestions(orderId: string): Promise<string[]> {
+  return fetchJson<string[]>(`/api/orders/${orderId}/suggestions`);
+}
+
+export async function getCustomerSuggestions(customerId: string): Promise<string[]> {
+  return fetchJson<string[]>(`/api/customers/${customerId}/suggestions`);
+}
+
+export async function reclassifyOrder(orderId: string, newStatus: string): Promise<Order> {
+  return fetchJson<Order>(`/api/orders/${orderId}/reclassify`, {
+    method: "POST",
+    body: JSON.stringify({ new_status: newStatus }),
+  });
+}
+
 export async function searchProducts(query: string): Promise<Product[]> {
   return fetchJson<Product[]>(`/api/products/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function createCustomer(data: { name: string; phone: string; customer_type: string; address: string }): Promise<Customer> {
+  return fetchJson<Customer>("/api/customers", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getAllProducts(): Promise<Product[]> {
+  return fetchJson<Product[]>("/api/products");
+}
+
+export async function createProduct(data: CreateProductInput): Promise<Product> {
+  return fetchJson<Product>("/api/products", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateProduct(id: string, name: string, price: number): Promise<Product> {
+  return fetchJson<Product>(`/api/products/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ name, price_default: price }),
+  });
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  await fetchJson<Record<string, string>>(`/api/products/${id}`, { method: "DELETE" });
 }

@@ -44,6 +44,9 @@ export interface Customer {
   latest_health_event: string | null;
   latest_health_severity: string | null;
   latest_health_date: string | null;
+  pending_order_count: number;
+  confirmed_order_count: number;
+  fulfilled_order_count: number;
 }
 
 export interface CustomerContext {
@@ -83,6 +86,9 @@ export interface AgentAction {
   confidence: number | null;
   human_reviewed: number;
   created_at: string;
+  customer_name: string | null;
+  resolved_customer_id: string | null;
+  related_order_id: string | null;
 }
 
 export interface OrdersOverview {
@@ -98,7 +104,6 @@ export interface OrdersOverview {
   fulfilled_all_value: number;
   rejected_count: number;
   flagged_count: number;
-  needs_clarification_count: number;
 }
 
 export interface Conversation {
@@ -110,6 +115,7 @@ export interface Conversation {
   parsed_intent: string | null;
   source: string;
   created_at: string;
+  image_url: string | null;
 }
 
 export interface AggregatedItem {
@@ -148,6 +154,26 @@ export interface ManualMessageResponse {
 
 export interface Product {
   id: string;
+  name: string;
+  sku: string;
+  category: string;
+  unit: string;
+  unit_type: string;
+  price_default: number;
+}
+
+export interface NudgeSuggestion {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  contact_whatsapp: string;
+  suggested_message: string;
+  reason: string;
+  status: string;
+  created_at: string;
+}
+
+export interface CreateProductInput {
   name: string;
   sku: string;
   category: string;

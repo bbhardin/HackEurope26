@@ -22,6 +22,20 @@ def _rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def create_customer(name: str, phone: str, customer_type: str = "unknown", address: str = "Not provided") -> dict:
+    customer_id = f"cust-{_uid()}"
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO customers (id, name, type, contact_phone, contact_whatsapp, delivery_address, health_score, created_at) VALUES (?,?,?,?,?,?,1.0,?)",
+            (customer_id, name, customer_type, phone, phone, address, datetime.now().isoformat()),
+        )
+        conn.execute(
+            "INSERT INTO customer_context (customer_id, context_json, last_updated) VALUES (?,?,datetime('now'))",
+            (customer_id, json.dumps({"typical_basket": [], "order_frequency": "unknown", "preferred_order_day": "unknown", "delivery_preferences": address, "notes": "New customer — profile auto-created"})),
+        )
+    return get_customer_by_id(customer_id)  # type: ignore[return-value]
+
+
 def get_customer_by_phone(phone: str) -> Optional[dict]:
     with get_db() as conn:
         row = conn.execute(
@@ -46,7 +60,10 @@ def get_all_customers() -> list[dict]:
                       (SELECT he.severity FROM customer_health_events he
                        WHERE he.customer_id = c.id ORDER BY he.created_at DESC LIMIT 1) as latest_health_severity,
                       (SELECT he.created_at FROM customer_health_events he
-                       WHERE he.customer_id = c.id ORDER BY he.created_at DESC LIMIT 1) as latest_health_date
+                       WHERE he.customer_id = c.id ORDER BY he.created_at DESC LIMIT 1) as latest_health_date,
+                      (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.status = 'pending_confirmation') as pending_order_count,
+                      (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.status = 'confirmed') as confirmed_order_count,
+                      (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.status = 'fulfilled') as fulfilled_order_count
                FROM customers c ORDER BY c.name"""
         ).fetchall()
         return _rows_to_dicts(rows)
@@ -82,6 +99,36 @@ def get_all_products() -> list[dict]:
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM products ORDER BY category, name").fetchall()
         return _rows_to_dicts(rows)
+
+
+def create_product(name: str, sku: str, category: str, unit: str, unit_type: str, price_default: float) -> dict:
+    product_id = f"prod-{_uid()}"
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO products (id, name, sku, category, unit, unit_type, price_default) VALUES (?,?,?,?,?,?,?)",
+            (product_id, name, sku, category, unit, unit_type, price_default),
+        )
+    return get_product_by_id(product_id)  # type: ignore[return-value]
+
+
+def update_product(product_id: str, name: str, price_default: float) -> bool:
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE products SET name = ?, price_default = ? WHERE id = ?",
+            (name, price_default, product_id),
+        )
+        return conn.total_changes > 0
+
+
+def delete_product(product_id: str) -> bool:
+    with get_db() as conn:
+        has_orders = conn.execute(
+            "SELECT COUNT(*) as c FROM order_items WHERE product_id = ?", (product_id,)
+        ).fetchone()
+        if has_orders and has_orders["c"] > 0:
+            return False
+        conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        return conn.total_changes > 0
 
 
 def search_products(query: str) -> list[dict]:
@@ -302,14 +349,32 @@ def log_agent_action(
 
 def get_agent_actions(limit: int = 50, agent_type: Optional[str] = None) -> list[dict]:
     with get_db() as conn:
+        base_query = """
+            SELECT aa.*,
+                CASE
+                    WHEN aa.entity_type = 'customer' THEN (SELECT name FROM customers WHERE id = aa.entity_id)
+                    WHEN aa.entity_type = 'order' THEN (SELECT c.name FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.id = aa.entity_id)
+                    ELSE NULL
+                END as customer_name,
+                CASE
+                    WHEN aa.entity_type = 'customer' THEN (SELECT id FROM customers WHERE id = aa.entity_id)
+                    WHEN aa.entity_type = 'order' THEN (SELECT customer_id FROM orders WHERE id = aa.entity_id)
+                    ELSE NULL
+                END as resolved_customer_id,
+                CASE
+                    WHEN aa.entity_type = 'order' THEN aa.entity_id
+                    ELSE NULL
+                END as related_order_id
+            FROM agent_actions aa
+        """
         if agent_type:
             rows = conn.execute(
-                "SELECT * FROM agent_actions WHERE agent_type = ? ORDER BY created_at DESC LIMIT ?",
+                base_query + " WHERE aa.agent_type = ? ORDER BY aa.created_at DESC LIMIT ?",
                 (agent_type, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM agent_actions ORDER BY created_at DESC LIMIT ?",
+                base_query + " ORDER BY aa.created_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return _rows_to_dicts(rows)
@@ -411,6 +476,56 @@ def acknowledge_alert(alert_id: str) -> bool:
         return conn.total_changes > 0
 
 
+def create_nudge_suggestion(customer_id: str, suggested_message: str, reason: str) -> str:
+    nudge_id = _uid()
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO nudge_suggestions (id, customer_id, suggested_message, reason, created_at) VALUES (?,?,?,?,?)",
+            (nudge_id, customer_id, suggested_message, reason, datetime.now().isoformat()),
+        )
+    return nudge_id
+
+
+def get_nudge_suggestions(status: str = "pending") -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT ns.*, c.name as customer_name, c.contact_whatsapp
+               FROM nudge_suggestions ns
+               JOIN customers c ON ns.customer_id = c.id
+               WHERE ns.status = ?
+               ORDER BY ns.created_at DESC""",
+            (status,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+
+
+def get_nudge_suggestion_by_id(nudge_id: str) -> Optional[dict]:
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT ns.*, c.name as customer_name, c.contact_whatsapp
+               FROM nudge_suggestions ns
+               JOIN customers c ON ns.customer_id = c.id
+               WHERE ns.id = ?""",
+            (nudge_id,),
+        ).fetchone()
+        return _row_to_dict(row) if row else None
+
+
+def update_nudge_suggestion_status(nudge_id: str, status: str) -> bool:
+    with get_db() as conn:
+        conn.execute("UPDATE nudge_suggestions SET status = ? WHERE id = ?", (status, nudge_id))
+        return conn.total_changes > 0
+
+
+def get_customer_nudge_suggestions(customer_id: str) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM nudge_suggestions WHERE customer_id = ? AND status = 'pending' ORDER BY created_at DESC",
+            (customer_id,),
+        ).fetchall()
+        return _rows_to_dicts(rows)
+
+
 def get_orders_overview() -> dict:
     with get_db() as conn:
         pending = conn.execute(
@@ -434,9 +549,6 @@ def get_orders_overview() -> dict:
         flagged = conn.execute(
             "SELECT COUNT(*) as count FROM orders WHERE status = 'flagged'"
         ).fetchone()
-        needs_clarification = conn.execute(
-            "SELECT COUNT(*) as count FROM orders WHERE status = 'needs_clarification'"
-        ).fetchone()
         return {
             "pending_count": pending["count"],
             "pending_value": round(pending["total"], 2),
@@ -450,7 +562,6 @@ def get_orders_overview() -> dict:
             "fulfilled_all_value": round(fulfilled_all["total"], 2),
             "rejected_count": rejected["count"],
             "flagged_count": flagged["count"],
-            "needs_clarification_count": needs_clarification["count"],
         }
 
 

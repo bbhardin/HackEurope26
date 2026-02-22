@@ -1,17 +1,51 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getOrdersOverview, getOrders, getAlerts, simulateMessage, triggerNudgeScan } from "@/lib/api";
-import type { OrdersOverview, Order, Alert } from "@/lib/types";
+import Link from "next/link";
+import { getOrdersOverview, getOrders, getAlerts, simulateMessage, triggerNudgeScan, getActivity } from "@/lib/api";
+import type { OrdersOverview, Order, Alert, AgentAction } from "@/lib/types";
 
-function KpiCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
-  return (
-    <div className="rounded-lg p-5 border" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+function KpiCard({ label, value, sub, color, href }: { label: string; value: string; sub?: string; color: string; href?: string }) {
+  const content = (
+    <div className="rounded-lg p-5 border transition-colors" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
       <p className="text-xs font-medium uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>{label}</p>
       <p className="text-2xl font-bold" style={{ color }}>{value}</p>
       {sub && <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>{sub}</p>}
     </div>
   );
+  if (href) {
+    return <Link href={href}>{content}</Link>;
+  }
+  return content;
+}
+
+function alertActionHref(alert: Alert): string | null {
+  switch (alert.type) {
+    case "anomaly":
+    case "agent_note":
+    case "order_modified":
+      return "/orders";
+    case "churn_risk":
+    case "incoming_message":
+      return alert.customer_id ? `/customers/${alert.customer_id}` : null;
+    default:
+      return null;
+  }
+}
+
+function alertActionLabel(type: string): string {
+  switch (type) {
+    case "anomaly":
+    case "agent_note":
+    case "order_modified":
+      return "Review";
+    case "churn_risk":
+      return "View Customer";
+    case "incoming_message":
+      return "Reply";
+    default:
+      return "View";
+  }
 }
 
 export default function OverviewPage() {
@@ -21,6 +55,8 @@ export default function OverviewPage() {
   const [simPhone, setSimPhone] = useState("+4917612345002");
   const [simMessage, setSimMessage] = useState("Hi, I need 20kg chicken breast, 10kg potatoes, and the usual olive oil please");
   const [simStatus, setSimStatus] = useState("");
+  const [lastActivity, setLastActivity] = useState<AgentAction | null>(null);
+  const [recentActionCount, setRecentActionCount] = useState(0);
 
   const loadData = useCallback(async () => {
     try {
@@ -32,6 +68,12 @@ export default function OverviewPage() {
       setOverview(ov);
       setRecentOrders(orders.slice(0, 8));
       setAlerts(al.slice(0, 5));
+      const activity = await getActivity(20);
+      if (activity.length > 0) {
+        setLastActivity(activity[0]);
+        const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+        setRecentActionCount(activity.filter((a) => a.created_at >= oneHourAgo).length);
+      }
     } catch (e) {
       console.error("Failed to load overview:", e);
     }
@@ -72,22 +114,31 @@ export default function OverviewPage() {
       case "pending_confirmation": return "var(--color-amber)";
       case "flagged": return "var(--color-red)";
       case "rejected": return "var(--color-red)";
-      case "needs_clarification": return "var(--color-amber)";
       default: return "var(--color-text-muted)";
     }
   };
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6">Order Overview</h2>
+      <h2 className="text-2xl font-bold mb-4">Order Overview</h2>
+
+      {lastActivity && (
+        <div className="flex items-center gap-3 mb-6 px-4 py-2.5 rounded-lg border" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+          <span className="w-2 h-2 rounded-full" style={{ background: "var(--color-green)" }} />
+          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+            Agent is active — {recentActionCount} action{recentActionCount !== 1 ? "s" : ""} in the last hour.
+            Last: <span style={{ color: "var(--color-text)" }}>{lastActivity.action}</span> at {lastActivity.created_at.slice(11, 16)}
+          </p>
+        </div>
+      )}
 
       {overview && (
         <div className="grid grid-cols-5 gap-4 mb-8">
-          <KpiCard label="Pending" value={String(overview.pending_count)} sub={`EUR ${overview.pending_value.toLocaleString()}`} color="var(--color-amber)" />
-          <KpiCard label="Confirmed" value={String(overview.confirmed_all_count)} sub={`EUR ${overview.confirmed_all_value.toLocaleString()}`} color="#22d3ee" />
-          <KpiCard label="Fulfilled Today" value={String(overview.fulfilled_today_count)} sub={`EUR ${overview.fulfilled_today_value.toLocaleString()}`} color="var(--color-green)" />
-          <KpiCard label="Total Fulfilled" value={String(overview.fulfilled_all_count)} sub={`EUR ${overview.fulfilled_all_value.toLocaleString()}`} color="var(--color-accent)" />
-          <KpiCard label="Flagged / Rejected" value={`${overview.flagged_count} / ${overview.rejected_count}`} sub={overview.needs_clarification_count > 0 ? `${overview.needs_clarification_count} need clarification` : undefined} color="var(--color-red)" />
+          <KpiCard label="Pending" value={String(overview.pending_count)} sub={`EUR ${overview.pending_value.toLocaleString()}`} color="var(--color-amber)" href="/orders" />
+          <KpiCard label="Confirmed" value={String(overview.confirmed_all_count)} sub={`EUR ${overview.confirmed_all_value.toLocaleString()}`} color="#22d3ee" href="/orders" />
+          <KpiCard label="Fulfilled Today" value={String(overview.fulfilled_today_count)} sub={`EUR ${overview.fulfilled_today_value.toLocaleString()}`} color="var(--color-green)" href="/orders" />
+          <KpiCard label="Total Fulfilled" value={String(overview.fulfilled_all_count)} sub={`EUR ${overview.fulfilled_all_value.toLocaleString()}`} color="var(--color-accent)" href="/orders" />
+          <KpiCard label="Flagged / Rejected" value={`${overview.flagged_count} / ${overview.rejected_count}`} color="var(--color-red)" href="/orders" />
         </div>
       )}
 
@@ -96,7 +147,7 @@ export default function OverviewPage() {
           <h3 className="text-lg font-semibold mb-3">Recent Orders</h3>
           <div className="rounded-lg border overflow-hidden" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
             {recentOrders.map((order) => (
-              <div key={order.id} className="flex items-center justify-between px-4 py-3 border-b last:border-b-0" style={{ borderColor: "var(--color-border)" }}>
+              <Link key={order.id} href="/orders" className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 transition-colors" style={{ borderColor: "var(--color-border)" }}>
                 <div>
                   <p className="text-sm font-medium">{order.customer_name}</p>
                   <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>{order.created_at.slice(0, 16).replace("T", " ")}</p>
@@ -105,7 +156,7 @@ export default function OverviewPage() {
                   <p className="text-sm font-semibold">EUR {order.total_value.toFixed(2)}</p>
                   <p className="text-xs font-medium" style={{ color: statusColor(order.status) }}>{order.status}</p>
                 </div>
-              </div>
+              </Link>
             ))}
             {recentOrders.length === 0 && (
               <p className="p-4 text-sm" style={{ color: "var(--color-text-muted)" }}>No recent orders</p>
@@ -116,20 +167,30 @@ export default function OverviewPage() {
         <div>
           <h3 className="text-lg font-semibold mb-3">Active Alerts</h3>
           <div className="rounded-lg border overflow-hidden" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-            {alerts.map((alert) => (
-              <div key={alert.id} className="px-4 py-3 border-b last:border-b-0" style={{ borderColor: "var(--color-border)" }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded" style={{
-                    background: alert.type === "churn_risk" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
-                    color: alert.type === "churn_risk" ? "var(--color-red)" : "var(--color-amber)",
-                  }}>
-                    {alert.type}
-                  </span>
-                  {alert.customer_name && <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{alert.customer_name}</span>}
+            {alerts.map((alert) => {
+              const actionHref = alertActionHref(alert);
+              return (
+                <div key={alert.id} className="px-4 py-3 border-b last:border-b-0" style={{ borderColor: "var(--color-border)" }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-medium px-2 py-0.5 rounded" style={{
+                      background: alert.type === "churn_risk" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
+                      color: alert.type === "churn_risk" ? "var(--color-red)" : "var(--color-amber)",
+                    }}>
+                      {alert.type}
+                    </span>
+                    {alert.customer_name && <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{alert.customer_name}</span>}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs flex-1" style={{ color: "var(--color-text-muted)" }}>{alert.detail.slice(0, 120)}</p>
+                    {actionHref && (
+                      <Link href={actionHref} className="ml-2 text-xs font-medium px-2 py-1 rounded shrink-0" style={{ color: "var(--color-accent)" }}>
+                        {alertActionLabel(alert.type)}
+                      </Link>
+                    )}
+                  </div>
                 </div>
-                <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>{alert.detail.slice(0, 120)}</p>
-              </div>
-            ))}
+              );
+            })}
             {alerts.length === 0 && (
               <p className="p-4 text-sm" style={{ color: "var(--color-text-muted)" }}>No active alerts</p>
             )}

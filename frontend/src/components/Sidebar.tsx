@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/orders", label: "Order Queue", icon: "☰" },
   { href: "/demand", label: "Demand Overview", icon: "▤" },
   { href: "/customers", label: "Customers", icon: "◉" },
+  { href: "/catalog", label: "Product Catalog", icon: "▦" },
   { href: "/alerts", label: "Alerts", icon: "△" },
   { href: "/activity", label: "Activity Log", icon: "◇" },
 ];

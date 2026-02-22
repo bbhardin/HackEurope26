@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { getActivity } from "@/lib/api";
 import type { AgentAction } from "@/lib/types";
 
@@ -67,7 +68,8 @@ export default function ActivityPage() {
               <th className="text-left text-xs font-medium px-4 py-3">Timestamp</th>
               <th className="text-left text-xs font-medium px-4 py-3">Agent</th>
               <th className="text-left text-xs font-medium px-4 py-3">Action</th>
-              <th className="text-left text-xs font-medium px-4 py-3">Entity</th>
+              <th className="text-left text-xs font-medium px-4 py-3">Customer</th>
+              <th className="text-left text-xs font-medium px-4 py-3">Order</th>
               <th className="text-right text-xs font-medium px-4 py-3">Confidence</th>
               <th className="text-left text-xs font-medium px-4 py-3">Details</th>
             </tr>
@@ -96,8 +98,19 @@ export default function ActivityPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-xs">{action.action}</td>
+                  <td className="px-4 py-2.5 text-xs">
+                    {action.customer_name ? (
+                      <Link href={`/customers/${action.resolved_customer_id}`} style={{ color: "var(--color-accent)" }}>
+                        {action.customer_name}
+                      </Link>
+                    ) : action.entity_type === "phone" ? (
+                      <span style={{ color: "var(--color-text-muted)" }}>{action.entity_id}</span>
+                    ) : (
+                      <span style={{ color: "var(--color-text-muted)" }}>—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-xs font-mono" style={{ color: "var(--color-text-muted)" }}>
-                    {action.entity_type}/{action.entity_id.slice(0, 12)}
+                    {action.related_order_id || "—"}
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs">
                     {action.confidence !== null ? `${(action.confidence * 100).toFixed(0)}%` : "—"}

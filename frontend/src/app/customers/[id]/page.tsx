@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { getCustomer, getCustomerContext, getCustomerOrders, getCustomerConversations, getHealthEvents, sendCustomerMessage, logCommunication } from "@/lib/api";
-import type { Customer, CustomerContext, Order, Conversation, HealthEvent, DetectedOrderChange } from "@/lib/types";
+import { getCustomer, getCustomerContext, getCustomerOrders, getCustomerConversations, getHealthEvents, sendCustomerMessage, logCommunication, getNudgeSuggestions, sendNudge, dismissNudge, getCustomerSuggestions } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import type { Customer, CustomerContext, Order, Conversation, HealthEvent, DetectedOrderChange, NudgeSuggestion } from "@/lib/types";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -22,6 +23,10 @@ export default function CustomerDetailPage() {
   const [noteText, setNoteText] = useState("");
   const [noteStatus, setNoteStatus] = useState("");
   const [detectedChanges, setDetectedChanges] = useState<DetectedOrderChange[]>([]);
+  const [nudges, setNudges] = useState<NudgeSuggestion[]>([]);
+  const [nudgeMsg, setNudgeMsg] = useState("");
+  const [msgSuggestions, setMsgSuggestions] = useState<string[]>([]);
+  const { showToast } = useToast();
 
   const loadData = () => {
     if (!id) return;
@@ -31,13 +36,16 @@ export default function CustomerDetailPage() {
       getCustomerOrders(id),
       getCustomerConversations(id),
       getHealthEvents(id),
-    ]).then(([c, ctx, o, conv, he]) => {
+      getNudgeSuggestions(),
+    ]).then(([c, ctx, o, conv, he, allNudges]) => {
       setCustomer(c);
       setContext(ctx);
       setOrders(o);
       setConversations(conv);
       setHealthEvts(he);
+      setNudges(allNudges.filter((n) => n.customer_id === id));
     }).catch(console.error);
+    getCustomerSuggestions(id).then(setMsgSuggestions).catch(() => {});
   };
 
   useEffect(() => { loadData(); }, [id]);
@@ -50,12 +58,14 @@ export default function CustomerDetailPage() {
       setMsgInput("");
       if (result.detected_changes && result.detected_changes.length > 0) {
         setDetectedChanges(result.detected_changes);
-        setMsgStatus("Sent! Order changes detected.");
+        showToast("Sent via WhatsApp — order changes detected", "info");
       } else {
-        setMsgStatus("Sent!");
+        showToast("Sent via WhatsApp");
       }
+      setMsgStatus("");
       loadData();
     } catch (e) {
+      showToast("Failed to send message", "error");
       setMsgStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
@@ -68,8 +78,10 @@ export default function CustomerDetailPage() {
       setNoteText("");
       setNoteOpen(false);
       setNoteStatus("");
+      showToast("Note logged");
       loadData();
     } catch (e) {
+      showToast("Failed to log note", "error");
       setNoteStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
@@ -162,6 +174,28 @@ export default function CustomerDetailPage() {
         </div>
       )}
 
+      {nudges.length > 0 && (
+        <div className="rounded-lg border p-4 mb-6" style={{ background: "rgba(245,158,11,0.05)", borderColor: "var(--color-amber)" }}>
+          <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--color-amber)" }}>Nudge Suggestions</h3>
+          {nudges.map((nudge) => (
+            <div key={nudge.id} className="mb-3 last:mb-0">
+              <p className="text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>{nudge.reason}</p>
+              <textarea
+                defaultValue={nudge.suggested_message}
+                onChange={(e) => setNudgeMsg(e.target.value)}
+                className="w-full px-3 py-2 rounded border text-sm mb-2"
+                rows={3}
+                style={{ background: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }}
+              />
+              <div className="flex gap-2">
+                <button onClick={async () => { await sendNudge(nudge.id, nudgeMsg || undefined); loadData(); }} className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer" style={{ background: "var(--color-amber)", color: "#fff" }}>Send Nudge</button>
+                <button onClick={async () => { await dismissNudge(nudge.id); loadData(); }} className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>Dismiss</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {detectedChanges.length > 0 && (
         <div className="mb-4 p-4 rounded-lg border" style={{ background: "rgba(79,140,255,0.1)", borderColor: "var(--color-accent)" }}>
           <p className="text-sm font-semibold mb-2" style={{ color: "var(--color-accent)" }}>Detected order changes from your message:</p>
@@ -225,6 +259,13 @@ export default function CustomerDetailPage() {
             </div>
           )}
 
+          {conversations.length > 0 && conversations[0].direction === "outbound" && orders.some(o => o.status === "flagged" || o.status === "pending_confirmation") && (
+            <p className="text-xs italic mb-2 px-1" style={{ color: "var(--color-amber)" }}>Awaiting customer response</p>
+          )}
+          {conversations.length > 0 && conversations[0].direction === "inbound" && orders.some(o => o.status === "flagged" || o.status === "pending_confirmation") && (
+            <p className="text-xs italic mb-2 px-1" style={{ color: "var(--color-accent)" }}>Customer responded — review needed</p>
+          )}
+
           <div className="rounded-lg border overflow-hidden max-h-96 overflow-y-auto" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
             {conversations.slice(0, 30).map((conv) => (
               <div key={conv.id} className="px-4 py-3 border-b last:border-b-0" style={{ borderColor: "var(--color-border)" }}>
@@ -261,10 +302,19 @@ export default function CustomerDetailPage() {
           </div>
 
           <div className="mt-3">
+            {msgSuggestions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {msgSuggestions.map((s, i) => (
+                  <button key={i} onClick={() => setMsgInput(s)} className="text-xs px-2 py-1 rounded border cursor-pointer transition-colors" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
+                    {s.slice(0, 60)}{s.length > 60 ? "..." : ""}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2">
               <input value={msgInput} onChange={(e) => setMsgInput(e.target.value)} placeholder="Send a WhatsApp message..."
                 className="flex-1 px-3 py-2 rounded border text-sm" style={{ background: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }} />
-              <button onClick={handleSendMessage} className="px-3 py-2 rounded text-xs font-medium cursor-pointer" style={{ background: "var(--color-accent)", color: "#fff" }}>Send</button>
+              <button onClick={handleSendMessage} className="px-3 py-2 rounded text-xs font-medium cursor-pointer" style={{ background: "var(--color-accent)", color: "#fff" }}>Send via WhatsApp</button>
             </div>
             {msgStatus && <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>{msgStatus}</p>}
           </div>

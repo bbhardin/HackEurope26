@@ -12,10 +12,18 @@ from app.crud import (
     get_order_patterns,
     get_health_events,
     save_conversation,
+    create_customer,
 )
-from app.orchestrator import send_manual_message
+from app.orchestrator import send_manual_message, generate_suggested_messages
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
+
+
+class CreateCustomerRequest(BaseModel):
+    name: str
+    phone: str
+    customer_type: str = "restaurant"
+    address: str = "Not provided"
 
 
 class MessageRequest(BaseModel):
@@ -31,6 +39,12 @@ class NoteRequest(BaseModel):
 @router.get("")
 async def list_customers() -> list[dict]:
     return get_all_customers()
+
+
+@router.post("")
+async def create_new_customer(body: CreateCustomerRequest) -> dict:
+    customer = create_customer(body.name, body.phone, body.customer_type, body.address)
+    return customer
 
 
 @router.get("/{customer_id}")
@@ -94,3 +108,11 @@ async def log_note(customer_id: str, body: NoteRequest) -> dict[str, str]:
         from app.crud import create_alert
         create_alert("communication_note", customer_id, f"Note logged for order {body.order_id}: {body.message[:200]}")
     return {"status": "logged"}
+
+
+@router.get("/{customer_id}/suggestions")
+async def get_customer_suggestions(customer_id: str) -> list[str]:
+    customer = get_customer_by_id(customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return await generate_suggested_messages(customer_id)

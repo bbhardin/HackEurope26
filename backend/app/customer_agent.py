@@ -16,13 +16,13 @@ from app.crud import (
 
 logger = logging.getLogger(__name__)
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 SYSTEM_PROMPT = """You are a Customer Agent for a food & beverage wholesaler. You process incoming WhatsApp messages from restaurant/hotel customers and classify their intent.
 
 You have access to the customer's full context including their order history, typical basket, and preferences. Use this context to understand what they want.
 
-You may receive text messages or images (e.g. handwritten order lists, photos of products or invoices). For images, analyse the visual content carefully to extract order information.
+You may receive text messages or images (e.g. handwritten order lists, photos of products or invoices). If an image is provided, examine it carefully for handwritten or printed order items. Extract product names, quantities, and any other order-relevant information from the image.
 
 Your job:
 1. Classify the intent of the message into one of:
@@ -113,13 +113,12 @@ def _execute_tool(tool_name: str, tool_input: dict, customer_id: str) -> str:
         return json.dumps(simplified)
 
     if tool_name == "flag_anomaly":
-        sigme("anomaly_flagged", True)
         return json.dumps({"flagged": True, "reason": tool_input["reason"]})
 
     return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
 
-def _build_user_message(customer_id: str, text_content: str, message_type: str) -> str | list:
+def _build_user_message(customer_id: str, text_content: str, message_type: str, image_base64: str = "") -> str | list:
     context = get_customer_context(customer_id)
     patterns = get_order_patterns(customer_id)
 
@@ -162,90 +161,32 @@ INCOMING MESSAGE (type: {message_type}):
   "notes": "any additional notes for the wholesaler"
 }"""
 
-    if message_type == "image" and text_content.startswith("[IMAGE:"):
-        b64_data = text_content[7:-1]
-        return [
-            {"type": "text", "text": prefix},
-            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64_data}},
-            {"type": "text", "text": suffix},
-        ]
+    if image_base64:
+        content: list[dict] = [{"type": "text", "text": prefix}]
+        content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_base64}})
+        if text_content:
+            content.append({"type": "text", "text": text_content})
+        content.append({"type": "text", "text": suffix})
+        return content
 
     return prefix + text_content + "\n\n" + suffix
 
-#@paid_tracing("testcustomer", external_product_id="test-external")
-async def run_customer_agent(customer_id: str, text_content: str, message_type: str = "text") -> dict:
-    #export PAID_API_KEY=
+async def run_customer_agent(customer_id: str, text_content: str, message_type: str = "text", image_base64: str = "") -> dict:
     if not client:
-        print("HERE0")
         return _fallback_parse(customer_id, text_content)
 
-    user_message = _build_user_message(customer_id, text_content, message_type)
-
-    print("HERE3")
-    #sigme("chat_completion")
-    print("WOWZA")
+    user_message = _build_user_message(customer_id, text_content, message_type, image_base64)
 
     try:
         messages: list[dict] = [{"role": "user", "content": user_message}]
 
-        print("-")
-        # from paid import Paid
-        # paid = Paid(token="6e918259-b19f-417b-a37d-338e9e4d5dbd")
-        # paid.signals.create(customer_id="cus_5hgEqXKUroR", event="api_call")
-        print("woah")
-        response = client.messages.create(
+        response = await client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,
         )
-        print("--")
-        # from paid import Paid
-        # import paid
-        # # paid api 2 6e918259-b19f-417b-a37d-338e9e4d5dbd
-
-        #customer = paid.customers.create_customer(name="Acme Corp", email="acme@example.com")  
-        # THIS ABOVE WORKS
-        
-        #paid.signals.create(customer_id="cus_5hg6bnudnWT", event="api_call")
-
-        # paid.usage.record_bulk_v2(signals=[
-        #     SignalV2(
-        #         event_name="email_sent",
-        #         product_id="YOUR_PRODUCT_ID",
-        #         customer_id="YOUR_CUSTOMER_ID",
-        #         data={"subject": "Follow-up"}
-        #     )
-        # ])
-        print("thing")
-    
-        #signal("chat_completion")#, enable_cost_tracing=True)
-
-        print("did a thing")
-        
-
-        # Record usage / trigger billing
-        #paid.signals.create(customer_id="customer_123", event="api_call")
-                # paid.usage.record(
-        #     eventName="chat_completion",
-        #     externalCustomerId="cus_5hg6bnudnWT",  # Your customer ID
-        #     externalProductId="prod_5hg6X4dxa8F",  # Your product ID
-        # )
-
-        # Send a usage signal
-        # paid.usage.usage_record_bulk_v_2(
-        #     event_name="api_calls",  # Must match your product's configured event name
-        #     external_customer_id="customer_123",  # Your customer ID
-        #     external_product_id="product_456",  # Your product ID
-        # )
-        # paid.customers.create_customer(
-        #     name="delete_me"
-        # )
-
-        #signal("chat_completion", True)
-
-        print("HERE1")
 
         while response.stop_reason == "tool_use":
             tool_results = []
@@ -262,16 +203,13 @@ async def run_customer_agent(customer_id: str, text_content: str, message_type: 
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
-            response = client.messages.create(
+            response = await client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 tools=TOOLS,
                 messages=messages,
             )
-            # signal("chat_completion", True)
-
-        print("HERE")
 
         result_text = ""
         for block in response.content:
@@ -449,7 +387,7 @@ OUTBOUND MESSAGE FROM WHOLESALER:
 Analyse if this message implies any changes to the customer's orders. Return JSON only."""
 
     try:
-        response = client.messages.create(
+        response = await client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
             system=OUTBOUND_ANALYSIS_PROMPT,

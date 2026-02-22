@@ -5,13 +5,12 @@ from app.crud import (
     get_overdue_customers,
     get_customer_context,
     get_customer_order_history,
-    save_conversation,
     log_agent_action,
     create_alert,
     create_health_event,
     update_order_pattern,
+    create_nudge_suggestion,
 )
-from app.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +27,12 @@ async def run_nudge_scan() -> dict:
     today = datetime.now().strftime("%Y-%m-%d")
     overdue = get_overdue_customers(today)
 
-    nudges_sent = 0
+    nudges_created = 0
     alerts_created = 0
 
     for customer in overdue:
         customer_id = customer["customer_id"]
         customer_name = customer["name"]
-        phone = customer["contact_whatsapp"]
         health_score = customer.get("health_score", 1.0)
 
         earliest_expected = customer.get("earliest_expected", today)
@@ -79,13 +77,13 @@ async def run_nudge_scan() -> dict:
 
         if basket and days_overdue < 14:
             message = _generate_nudge_message(customer_name, basket)
-            await send_whatsapp_message(phone, message)
-            save_conversation(customer_id, "outbound", message, "reorder_nudge")
-            nudges_sent += 1
+            reason = f"{days_overdue} day(s) overdue on usual {context.get('preferred_order_day', 'weekly')} order" if context else f"{days_overdue} day(s) overdue"
+            create_nudge_suggestion(customer_id, message, reason)
+            nudges_created += 1
 
             log_agent_action(
                 "nudge_scheduler",
-                "nudge_sent",
+                "nudge_suggestion_created",
                 "customer",
                 customer_id,
                 {"days_overdue": days_overdue, "basket_items": len(basket)},
@@ -94,7 +92,7 @@ async def run_nudge_scan() -> dict:
     return {
         "scan_date": today,
         "overdue_customers": len(overdue),
-        "nudges_sent": nudges_sent,
+        "nudges_created": nudges_created,
         "alerts_created": alerts_created,
     }
 

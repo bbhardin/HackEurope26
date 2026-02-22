@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from app.pipeline import handle_incoming_message
@@ -13,6 +13,6 @@ class SimulateMessage(BaseModel):
 
 
 @router.post("/message")
-async def simulate_incoming(body: SimulateMessage) -> dict[str, str]:
-    await handle_incoming_message(body.phone, body.message, body.message_type)
-    return {"status": "processed", "phone": body.phone}
+async def simulate_incoming(body: SimulateMessage, background_tasks: BackgroundTasks) -> dict[str, str]:
+    background_tasks.add_task(handle_incoming_message, body.phone, body.message, body.message_type)
+    return {"status": "processing", "phone": body.phone}

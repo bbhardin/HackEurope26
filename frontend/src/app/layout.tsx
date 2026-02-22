@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
+import { ToastProvider } from "@/components/Toast";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -22,10 +23,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${dmSans.variable} antialiased`} style={{ fontFamily: "var(--font-dm-sans), system-ui, sans-serif" }}>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 ml-64 p-8">{children}</main>
-        </div>
+        <ToastProvider>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="flex-1 ml-64 p-8">{children}</main>
+          </div>
+        </ToastProvider>
       </body>
     </html>
   );

@@ -352,7 +352,8 @@ When a customer sends an image via WhatsApp, the system downloads it, converts t
 3. **Frontend**: In the conversation timeline, if `image_url` is set, display a small thumbnail of the image alongside the message text. Clicking the thumbnail opens it full-size.
 
 4. **Order history reflection**: When an order is created from an image-based message, the `raw_message` field stores the extracted text and the `image_url` is linked through the conversation record.
-# Edit: Here again, please confirm the order with the customers, similar to how you did it with the recurring order phrsing (e.g., "the usual") in 1.1.3
+
+5. **Customer confirmation for image-parsed orders** *(per edit)*: Apply the same confirmation-before-creation pattern used for "the usual" repeat orders (see 1.3). After the agent extracts items from the image, the orchestrator sends a WhatsApp message: "We read the following items from your image: [items list]. Is this correct? Reply 'Yes' to confirm or send corrections." The order is created with status `flagged` and flag `"Awaiting customer confirmation of image-parsed order"`. When the customer replies "Yes", the agent classifies it as confirmation → status moves to `pending_confirmation`. If they send corrections, the agent processes as `modify_order`. This ensures image-based orders go through the same accuracy-boosting confirmation loop as recurring orders.
 
 ### Complexity: Medium–High
 
@@ -507,7 +508,8 @@ When an unknown phone number sends a message, `pipeline.py` creates an alert of 
 - Use Celery or similar task queue for LLM processing
 
 **Recommendation**: Implement Approach A — it's 90% of the benefit with minimal code change. The key insight is: the webhook must return immediately, and the Anthropic client must be async. Everything else is secondary.
-# Edit: Please use Approach A.
+
+**Decision** *(per edit)*: Approach A confirmed. Phase B of the todo list implements this approach.
 
 ### Complexity: Medium
 
@@ -552,24 +554,24 @@ Organised into 7 phases following the recommended implementation order.
 
 ### Phase A: Quick Wins — Clarification Tab Removal (#2) + Real Customers (#11)
 
-- [ ] **A.1** Backend: In `orchestrator.py`, replace all uses of `status = "needs_clarification"` with `status = "flagged"` plus a descriptive flag string (e.g., "Low confidence match: items need verification").
-- [ ] **A.2** Backend: In `crud.py`, remove `needs_clarification_count` from `get_orders_overview()`. Merge its count into `flagged_count`.
-- [ ] **A.3** Frontend types: Remove `needs_clarification_count` from `OrdersOverview` in `types.ts`.
-- [ ] **A.4** Frontend orders page: Remove the `{ value: "needs_clarification", label: "Clarification" }` entry from the filters array. Remove the "Approve Anyway" button block for `needs_clarification`. The Clarify button stays on flagged orders.
-- [ ] **A.5** Frontend overview: Remove `needs_clarification_count` reference from the KPI card subtitle.
-- [ ] **A.6** Seed: Add Mantas (`+447460880940`) and Ben (`+18128017698`) as customers in `seed.py` with basic baskets and context.
-- [ ] **A.7** Re-seed database and typecheck.
+- [x] **A.1** Backend: In `orchestrator.py`, replace all uses of `status = "needs_clarification"` with `status = "flagged"` plus a descriptive flag string (e.g., "Low confidence match: items need verification").
+- [x] **A.2** Backend: In `crud.py`, remove `needs_clarification_count` from `get_orders_overview()`. Merge its count into `flagged_count`.
+- [x] **A.3** Frontend types: Remove `needs_clarification_count` from `OrdersOverview` in `types.ts`.
+- [x] **A.4** Frontend orders page: Remove the `{ value: "needs_clarification", label: "Clarification" }` entry from the filters array. Remove the "Approve Anyway" button block for `needs_clarification`. The Clarify button stays on flagged orders.
+- [x] **A.5** Frontend overview: Remove `needs_clarification_count` reference from the KPI card subtitle.
+- [x] **A.6** Seed: Add Mantas (`+447460880940`) and Ben (`+18128017698`) as customers in `seed.py` with basic baskets and context.
+- [x] **A.7** Re-seed database and typecheck.
 
 ---
 
 ### Phase B: Infrastructure — Background Processing (#13)
 
-- [ ] **B.1** Backend: In `customer_agent.py`, switch from `anthropic.Anthropic` to `anthropic.AsyncAnthropic`. Change `client.messages.create()` to `await client.messages.create()`. Make `run_customer_agent` and `analyse_outbound_message` properly async.
-- [ ] **B.2** Backend: In `routers/webhook.py`, use FastAPI `BackgroundTasks` to offload `process_and_handle` so the webhook returns `200 OK` immediately.
-- [ ] **B.3** Backend: In `pipeline.py`, wrap the blocking `run_customer_agent()` and `handle_agent_output()` calls to work with the async Anthropic client.
-- [ ] **B.4** Backend: In `routers/simulate.py`, apply the same background task pattern for the simulation endpoint.
-- [ ] **B.5** Frontend: Verify the 5-second polling works correctly now that the backend doesn't block. Consider reducing poll interval to 3 seconds on the overview and order queue pages.
-- [ ] **B.6** Typecheck and test.
+- [x] **B.1** Backend: In `customer_agent.py`, switch from `anthropic.Anthropic` to `anthropic.AsyncAnthropic`. Change `client.messages.create()` to `await client.messages.create()`. Make `run_customer_agent` and `analyse_outbound_message` properly async.
+- [x] **B.2** Backend: In `routers/webhook.py`, use FastAPI `BackgroundTasks` to offload `process_and_handle` so the webhook returns `200 OK` immediately.
+- [x] **B.3** Backend: In `pipeline.py`, wrap the blocking `run_customer_agent()` and `handle_agent_output()` calls to work with the async Anthropic client.
+- [x] **B.4** Backend: In `routers/simulate.py`, apply the same background task pattern for the simulation endpoint.
+- [x] **B.5** Frontend: Verify the 5-second polling works correctly now that the backend doesn't block. Consider reducing poll interval to 3 seconds on the overview and order queue pages.
+- [x] **B.6** Typecheck and test.
 
 ---
 
@@ -577,16 +579,16 @@ Organised into 7 phases following the recommended implementation order.
 
 **Activity Log (#6):**
 
-- [ ] **C.1** Backend: Update `get_agent_actions()` in `crud.py` to LEFT JOIN on `customers` and `orders` tables. Return `customer_name` and `related_order_id` in addition to raw `entity_type`/`entity_id`. For `entity_type='order'`, also resolve the customer name through the order.
-- [ ] **C.2** Frontend types: Add `customer_name: string | null` and `related_order_id: string | null` to `AgentAction`.
-- [ ] **C.3** Frontend activity page: Replace the "Entity" column with "Customer" and "Order" columns. Customer column shows the name (linked to `/customers/{id}`) or "—". Order column shows the order ID or "—".
+- [x] **C.1** Backend: Update `get_agent_actions()` in `crud.py` to LEFT JOIN on `customers` and `orders` tables. Return `customer_name` and `related_order_id` in addition to raw `entity_type`/`entity_id`. For `entity_type='order'`, also resolve the customer name through the order.
+- [x] **C.2** Frontend types: Add `customer_name: string | null` and `related_order_id: string | null` to `AgentAction`.
+- [x] **C.3** Frontend activity page: Replace the "Entity" column with "Customer" and "Order" columns. Customer column shows the name (linked to `/customers/{id}`) or "—". Order column shows the order ID or "—".
 
 **Dashboard Interactivity (#8):**
 
-- [ ] **C.4** Frontend overview: Make `KpiCard` accept an optional `href` prop. Wrap the card in a `Link` when `href` is provided. Map: Pending → `/orders`, Confirmed → `/orders`, Fulfilled → `/orders`, Flagged → `/orders`.
-- [ ] **C.5** Frontend overview: Make recent order rows clickable. Each row links to `/orders` (the order queue page). Store the filter value as a query param if needed.
-- [ ] **C.6** Frontend overview: Add action buttons on alerts. Each alert type gets a contextual link: `anomaly`/`agent_note` → "Review" (link to `/orders`), `churn_risk` → "View" (link to `/customers/{id}`), `incoming_message` → "Reply" (link to `/customers/{id}`).
-- [ ] **C.7** Typecheck.
+- [x] **C.4** Frontend overview: Make `KpiCard` accept an optional `href` prop. Wrap the card in a `Link` when `href` is provided. Map: Pending → `/orders`, Confirmed → `/orders`, Fulfilled → `/orders`, Flagged → `/orders`.
+- [x] **C.5** Frontend overview: Make recent order rows clickable. Each row links to `/orders` (the order queue page). Store the filter value as a query param if needed.
+- [x] **C.6** Frontend overview: Add action buttons on alerts. Each alert type gets a contextual link: `anomaly`/`agent_note` → "Review" (link to `/orders`), `churn_risk` → "View" (link to `/customers/{id}`), `incoming_message` → "Reply" (link to `/customers/{id}`).
+- [x] **C.7** Typecheck.
 
 ---
 
@@ -594,24 +596,24 @@ Organised into 7 phases following the recommended implementation order.
 
 **Message Handling (#1):**
 
-- [ ] **D.1** Backend: In `orchestrator._handle_general_intent()`, after sending the auto-response, create an alert of type `"incoming_message"` with detail including customer name and message preview. This surfaces non-order messages in the Alerts panel.
-- [ ] **D.2** Backend: For `repeat_order` intent, before creating the order, send a WhatsApp confirmation: "Can I confirm that by 'the usual' you mean: [items list]? Reply 'Yes' to confirm or send corrections." Set order status to `flagged` with flag `"Awaiting customer confirmation of repeat order"`.
-- [ ] **D.3** Frontend orders page: On flagged orders, add a "Reclassify" dropdown with options: "This is a valid order" (moves to `pending_confirmation`), "Not an order" (moves to `rejected`), "Still unclear" (keeps as `flagged`). This requires a new backend endpoint `POST /api/orders/{id}/reclassify` accepting `{ new_status: string }`.
-- [ ] **D.4** Backend: Add `POST /api/orders/{id}/reclassify` endpoint.
-- [ ] **D.5** Frontend API: Add `reclassifyOrder(orderId, newStatus)`.
-- [ ] **D.6** Frontend alerts page: For `incoming_message` alerts, show a "Reply" button linking to the customer detail page.
+- [x] **D.1** Backend: In `orchestrator._handle_general_intent()`, after sending the auto-response, create an alert of type `"incoming_message"` with detail including customer name and message preview. This surfaces non-order messages in the Alerts panel.
+- [x] **D.2** Backend: For `repeat_order` intent, before creating the order, send a WhatsApp confirmation: "Can I confirm that by 'the usual' you mean: [items list]? Reply 'Yes' to confirm or send corrections." Set order status to `flagged` with flag `"Awaiting customer confirmation of repeat order"`.
+- [x] **D.3** Frontend orders page: On flagged orders, add a "Reclassify" dropdown with options: "This is a valid order" (moves to `pending_confirmation`), "Not an order" (moves to `rejected`), "Still unclear" (keeps as `flagged`). This requires a new backend endpoint `POST /api/orders/{id}/reclassify` accepting `{ new_status: string }`.
+- [x] **D.4** Backend: Add `POST /api/orders/{id}/reclassify` endpoint.
+- [x] **D.5** Frontend API: Add `reclassifyOrder(orderId, newStatus)`.
+- [x] **D.6** Frontend alerts page: For `incoming_message` alerts, show a "Reply" button linking to the customer detail page.
 
 **Nudge Redesign (#7):**
 
-- [ ] **D.7** Backend schema: Add `nudge_suggestions` table: `(id TEXT PK, customer_id TEXT FK, suggested_message TEXT, reason TEXT, status TEXT DEFAULT 'pending', created_at TEXT)`.
-- [ ] **D.8** Backend crud: Add `create_nudge_suggestion()`, `get_nudge_suggestions()`, `update_nudge_suggestion_status()`.
-- [ ] **D.9** Backend nudge_scheduler: Change `run_nudge_scan()` to create nudge suggestions instead of sending messages directly. Only churn alerts remain automatic.
-- [ ] **D.10** Backend router: Add `GET /api/nudge/suggestions`, `POST /api/nudge/suggestions/{id}/send` (sends the message and marks as sent), `POST /api/nudge/suggestions/{id}/dismiss`.
-- [ ] **D.11** Frontend types: Add `NudgeSuggestion` type.
-- [ ] **D.12** Frontend API: Add `getNudgeSuggestions()`, `sendNudge(id, customMessage?)`, `dismissNudge(id)`.
-- [ ] **D.13** Frontend customers page: Show a nudge indicator on customer cards that have pending suggestions. Add a "Send Nudge" shortcut button.
-- [ ] **D.14** Frontend customer detail: Show pending nudge suggestions below the health timeline with editable message, reason, and Send/Dismiss buttons.
-- [ ] **D.15** Typecheck.
+- [x] **D.7** Backend schema: Add `nudge_suggestions` table: `(id TEXT PK, customer_id TEXT FK, suggested_message TEXT, reason TEXT, status TEXT DEFAULT 'pending', created_at TEXT)`.
+- [x] **D.8** Backend crud: Add `create_nudge_suggestion()`, `get_nudge_suggestions()`, `update_nudge_suggestion_status()`.
+- [x] **D.9** Backend nudge_scheduler: Change `run_nudge_scan()` to create nudge suggestions instead of sending messages directly. Only churn alerts remain automatic.
+- [x] **D.10** Backend router: Add `GET /api/nudge/suggestions`, `POST /api/nudge/suggestions/{id}/send` (sends the message and marks as sent), `POST /api/nudge/suggestions/{id}/dismiss`.
+- [x] **D.11** Frontend types: Add `NudgeSuggestion` type.
+- [x] **D.12** Frontend API: Add `getNudgeSuggestions()`, `sendNudge(id, customMessage?)`, `dismissNudge(id)`.
+- [x] **D.13** Frontend customers page: Show a nudge indicator on customer cards that have pending suggestions. Add a "Send Nudge" shortcut button.
+- [x] **D.14** Frontend customer detail: Show pending nudge suggestions below the health timeline with editable message, reason, and Send/Dismiss buttons.
+- [x] **D.15** Typecheck.
 
 ---
 
@@ -619,22 +621,22 @@ Organised into 7 phases following the recommended implementation order.
 
 **Customer Panel (#3):**
 
-- [ ] **E.1** Backend: Enrich `GET /api/customers` response to include `pending_order_count`, `confirmed_order_count`, `fulfilled_order_count` per customer (subquery or JOIN).
-- [ ] **E.2** Frontend customers page: Add search bar (filters client-side by name).
-- [ ] **E.3** Frontend customers page: Add sort dropdown (Name A–Z, Name Z–A, Health low→high, Health high→low).
-- [ ] **E.4** Frontend customers page: Add filter dropdown (All, Has pending orders, Has confirmed orders, At risk).
-- [ ] **E.5** Frontend customers page: Add view toggle (tile / list). List view shows a compact table row per customer.
-- [ ] **E.6** Frontend types: Add `pending_order_count`, `confirmed_order_count`, `fulfilled_order_count` to `Customer`.
+- [x] **E.1** Backend: Enrich `GET /api/customers` response to include `pending_order_count`, `confirmed_order_count`, `fulfilled_order_count` per customer (subquery or JOIN).
+- [x] **E.2** Frontend customers page: Add search bar (filters client-side by name).
+- [x] **E.3** Frontend customers page: Add sort dropdown (Name A–Z, Name Z–A, Health low→high, Health high→low).
+- [x] **E.4** Frontend customers page: Add filter dropdown (All, Has pending orders, Has confirmed orders, At risk).
+- [x] **E.5** Frontend customers page: Add view toggle (tile / list). List view shows a compact table row per customer.
+- [x] **E.6** Frontend types: Add `pending_order_count`, `confirmed_order_count`, `fulfilled_order_count` to `Customer`.
 
 **Product Catalog (#4):**
 
-- [ ] **E.7** Backend crud: Add `create_product()`, `update_product()`, `delete_product()`.
-- [ ] **E.8** Backend router: Add `POST /api/products`, `PUT /api/products/{id}`, `DELETE /api/products/{id}`.
-- [ ] **E.9** Frontend sidebar: Add `{ href: "/catalog", label: "Product Catalog", icon: "▦" }`.
-- [ ] **E.10** Frontend new page `catalog/page.tsx`: Table of all products with search, category filter, Add Product form, inline edit (price), delete button.
-- [ ] **E.11** Frontend API: Add `createProduct()`, `updateProduct()`, `deleteProduct()`.
-- [ ] **E.12** Frontend types: Add `CreateProductInput` type.
-- [ ] **E.13** Typecheck.
+- [x] **E.7** Backend crud: Add `create_product()`, `update_product()`, `delete_product()`.
+- [x] **E.8** Backend router: Add `POST /api/products`, `PUT /api/products/{id}`, `DELETE /api/products/{id}`.
+- [x] **E.9** Frontend sidebar: Add `{ href: "/catalog", label: "Product Catalog", icon: "▦" }`.
+- [x] **E.10** Frontend new page `catalog/page.tsx`: Table of all products with search, category filter, Add Product form, inline edit (price), delete button.
+- [x] **E.11** Frontend API: Add `createProduct()`, `updateProduct()`, `deleteProduct()`.
+- [x] **E.12** Frontend types: Add `CreateProductInput` type.
+- [x] **E.13** Typecheck.
 
 ---
 
@@ -642,22 +644,22 @@ Organised into 7 phases following the recommended implementation order.
 
 **Agentic UX (#9):**
 
-- [ ] **F.1** Frontend: Create `components/Toast.tsx` — a toast notification component with React context provider. Supports success/info/error types. Auto-dismisses after 3 seconds.
-- [ ] **F.2** Frontend layout: Wrap the app in `ToastProvider` in `layout.tsx`.
-- [ ] **F.3** Frontend orders page: Replace inline status text with toast calls. Show toasts for: order confirmed, order dispatched, message sent, order edited.
-- [ ] **F.4** Frontend customer detail: Show toasts for: message sent, note logged.
-- [ ] **F.5** Frontend orders page: Add conversation state indicators on expanded orders. Show "Awaiting customer response" when last conversation was outbound and order is flagged/pending.
-- [ ] **F.6** Frontend: Update UI copy throughout. "Approve" → "Confirm Order", "Reject" → "Decline Order", "Mark Fulfilled" → "Dispatch Order", "Send" → "Send via WhatsApp". KPI labels: "Pending" → "Awaiting Review".
-- [ ] **F.7** Frontend overview: Add an "Agent Status" section showing last agent activity and a one-liner summary.
+- [x] **F.1** Frontend: Create `components/Toast.tsx` — a toast notification component with React context provider. Supports success/info/error types. Auto-dismisses after 3 seconds.
+- [x] **F.2** Frontend layout: Wrap the app in `ToastProvider` in `layout.tsx`.
+- [x] **F.3** Frontend orders page: Replace inline status text with toast calls. Show toasts for: order confirmed, order dispatched, message sent, order edited.
+- [x] **F.4** Frontend customer detail: Show toasts for: message sent, note logged.
+- [x] **F.5** Frontend orders page: Add conversation state indicators on expanded orders. Show "Awaiting customer response" when last conversation was outbound and order is flagged/pending.
+- [x] **F.6** Frontend: Update UI copy throughout. "Approve" → "Confirm Order", "Reject" → "Decline Order", "Mark Fulfilled" → "Dispatch Order", "Send" → "Send via WhatsApp". KPI labels: "Pending" → "Awaiting Review".
+- [x] **F.7** Frontend overview: Add an "Agent Status" section showing last agent activity and a one-liner summary.
 
 **Intelligent Messaging (#5):**
 
-- [ ] **F.8** Backend: Add `generate_suggested_messages(customer_id, order_id=None)` in `orchestrator.py`. Uses Claude to generate 2–3 contextual message suggestions. Falls back to static templates.
-- [ ] **F.9** Backend router: Add `GET /api/orders/{id}/suggestions` and `GET /api/customers/{id}/suggestions`.
-- [ ] **F.10** Frontend API: Add `getMessageSuggestions(orderId)` and `getCustomerSuggestions(customerId)`.
-- [ ] **F.11** Frontend orders page: Show suggestion chips above the message input when expanded. Clicking fills the input.
-- [ ] **F.12** Frontend customer detail: Same suggestion chips above the customer-level message input.
-- [ ] **F.13** Typecheck.
+- [x] **F.8** Backend: Add `generate_suggested_messages(customer_id, order_id=None)` in `orchestrator.py`. Uses Claude to generate 2–3 contextual message suggestions. Falls back to static templates.
+- [x] **F.9** Backend router: Add `GET /api/orders/{id}/suggestions` and `GET /api/customers/{id}/suggestions`.
+- [x] **F.10** Frontend API: Add `getMessageSuggestions(orderId)` and `getCustomerSuggestions(customerId)`.
+- [x] **F.11** Frontend orders page: Show suggestion chips above the message input when expanded. Clicking fills the input.
+- [x] **F.12** Frontend customer detail: Same suggestion chips above the customer-level message input.
+- [x] **F.13** Typecheck.
 
 ---
 
@@ -665,24 +667,26 @@ Organised into 7 phases following the recommended implementation order.
 
 **Auto Customer Creation (#12):**
 
-- [ ] **G.1** Backend crud: Add `create_customer(name, phone, customer_type, address)` function. Auto-generates ID, creates empty context.
-- [ ] **G.2** Backend pipeline: Replace the early-return for unknown phone numbers. Instead: auto-create customer profile, send welcome message, then continue processing the original message through the agent.
-- [ ] **G.3** Backend orchestrator: Add `send_welcome_message(customer_id)` function.
-- [ ] **G.4** Backend router customers: Add `POST /api/customers` for manual creation from the dashboard.
-- [ ] **G.5** Frontend customers page: Add "Add Customer" button opening a creation form (name, phone, type, address).
-- [ ] **G.6** Frontend API: Add `createCustomer(data)`.
+- [x] **G.1** Backend crud: Add `create_customer(name, phone, customer_type, address)` function. Auto-generates ID, creates empty context.
+- [x] **G.2** Backend pipeline: Replace the early-return for unknown phone numbers. Instead: auto-create customer profile, send welcome message, then continue processing the original message through the agent.
+- [x] **G.3** Backend orchestrator: Add `send_welcome_message(customer_id)` function.
+- [x] **G.4** Backend router customers: Add `POST /api/customers` for manual creation from the dashboard.
+- [x] **G.5** Frontend customers page: Add "Add Customer" button opening a creation form (name, phone, type, address).
+- [x] **G.6** Frontend API: Add `createCustomer(data)`.
 
 **Image Processing (#10):**
 
-- [ ] **G.7** Backend whatsapp: Refactor `process_incoming_message()` to return structured data `(text, image_base64)` instead of a single string.
-- [ ] **G.8** Backend pipeline: Pass image data separately to `run_customer_agent()`.
-- [ ] **G.9** Backend customer_agent: When image data is present, construct a multimodal Claude API call with `image` content block. Update the system prompt to include image-reading instructions.
-- [ ] **G.10** Backend: Save images to `data/images/{customer_id}/` directory. Add `image_url` column to `conversations` table.
-- [ ] **G.11** Backend crud: Update `save_conversation()` to accept optional `image_url`.
-- [ ] **G.12** Backend: Add a static file serving route for images, or return base64 inline.
-- [ ] **G.13** Frontend types: Add `image_url: string | null` to `Conversation`.
-- [ ] **G.14** Frontend customer detail: Display image thumbnails inline in the conversation timeline. Clicking opens full-size.
-- [ ] **G.15** Typecheck and E2E test with a real image.
+- [x] **G.7** Backend whatsapp: Refactor `process_incoming_message()` to return structured data `(text, image_base64)` instead of a single string.
+- [x] **G.8** Backend pipeline: Pass image data separately to `run_customer_agent()`.
+- [x] **G.9** Backend customer_agent: When image data is present, construct a multimodal Claude API call with `image` content block. Update the system prompt to include image-reading instructions.
+- [x] **G.10** Backend orchestrator: For orders parsed from images, implement a customer confirmation step (same pattern as the "the usual" confirmation in D.2). Before creating the order, send a WhatsApp message listing the items extracted from the image: "We read the following from your image: [items list]. Is this correct? Reply 'Yes' to confirm or send corrections." Set order status to `flagged` with flag `"Awaiting customer confirmation of image-parsed order"`.
+- [x] **G.11** Backend customer_agent: Return a flag (e.g., `"source": "image"`) in the agent output so the orchestrator can distinguish image-sourced orders from text-sourced orders and trigger the confirmation flow.
+- [x] **G.12** Backend: Save images to `data/images/{customer_id}/` directory. Add `image_url` column to `conversations` table.
+- [x] **G.13** Backend crud: Update `save_conversation()` to accept optional `image_url`.
+- [x] **G.14** Backend: Add a static file serving route for images, or return base64 inline.
+- [x] **G.15** Frontend types: Add `image_url: string | null` to `Conversation`.
+- [x] **G.16** Frontend customer detail: Display image thumbnails inline in the conversation timeline. Clicking opens full-size.
+- [x] **G.17** Typecheck and E2E test with a real image (verify the confirmation flow works: image → parse → confirmation message → customer reply → order created).
 
 ---
 
@@ -718,4 +722,4 @@ Phase G: Auto Customer Creation (#12) + Image Processing (#10)
 - Phases D and E can run in parallel
 - Backend and frontend tasks within each phase can be split between team members
 
-**Total task count:** 80 tasks across 7 phases
+**Total task count:** 82 tasks across 7 phases

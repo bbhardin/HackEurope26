@@ -13,7 +13,7 @@ from app.crud import (
     log_agent_action,
     search_products,
 )
-from app.orchestrator import approve_order, reject_order, fulfil_order, substitute_item, send_manual_message, send_clarification
+from app.orchestrator import approve_order, reject_order, fulfil_order, substitute_item, send_manual_message, send_clarification, generate_suggested_messages
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -33,6 +33,10 @@ class FulfilRequest(BaseModel):
 
 class ClarifyRequest(BaseModel):
     message: str
+
+
+class ReclassifyRequest(BaseModel):
+    new_status: str
 
 
 class UpdateOrderItem(BaseModel):
@@ -109,7 +113,7 @@ async def reject(order_id: str) -> dict:
     order = get_order_by_id(order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order["status"] not in ("pending_confirmation", "flagged", "needs_clarification"):
+    if order["status"] not in ("pending_confirmation", "flagged"):
         raise HTTPException(status_code=400, detail=f"Cannot reject order with status '{order['status']}'")
     return await reject_order(order_id)
 
@@ -149,3 +153,28 @@ async def clarify(order_id: str, body: ClarifyRequest) -> dict:
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return await send_clarification(order_id, body.message)
+
+
+@router.post("/{order_id}/reclassify")
+async def reclassify(order_id: str, body: ReclassifyRequest) -> dict:
+    order = get_order_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    allowed = {"pending_confirmation", "rejected", "flagged"}
+    if body.new_status not in allowed:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(allowed)}")
+    from app.crud import update_order_status
+    update_order_status(order_id, body.new_status, "wholesaler")
+    log_agent_action("wholesaler", "order_reclassified", "order", order_id, {"old_status": order["status"], "new_status": body.new_status})
+    updated = get_order_by_id(order_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Order not found after update")
+    return updated
+
+
+@router.get("/{order_id}/suggestions")
+async def get_suggestions(order_id: str) -> list[str]:
+    order = get_order_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return await generate_suggested_messages(order["customer_id"], order_id)

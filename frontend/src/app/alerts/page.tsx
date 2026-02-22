@@ -1,8 +1,38 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { getAlerts, acknowledgeAlert } from "@/lib/api";
 import type { Alert } from "@/lib/types";
+
+function alertActionHref(alert: Alert): string | null {
+  switch (alert.type) {
+    case "anomaly":
+    case "agent_note":
+    case "order_modified":
+      return "/orders";
+    case "churn_risk":
+    case "incoming_message":
+      return alert.customer_id ? `/customers/${alert.customer_id}` : null;
+    default:
+      return null;
+  }
+}
+
+function alertActionLabel(type: string): string {
+  switch (type) {
+    case "anomaly":
+    case "agent_note":
+    case "order_modified":
+      return "Review Order";
+    case "churn_risk":
+      return "View Customer";
+    case "incoming_message":
+      return "Reply";
+    default:
+      return "View";
+  }
+}
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -37,6 +67,7 @@ export default function AlertsPage() {
       case "churn_risk": return { bg: "rgba(239,68,68,0.15)", text: "var(--color-red)" };
       case "anomaly": return { bg: "rgba(245,158,11,0.15)", text: "var(--color-amber)" };
       case "unknown_customer": return { bg: "rgba(79,140,255,0.15)", text: "var(--color-accent)" };
+      case "incoming_message": return { bg: "rgba(79,140,255,0.15)", text: "var(--color-accent)" };
       case "order_modified": return { bg: "rgba(34,197,94,0.15)", text: "var(--color-green)" };
       default: return { bg: "rgba(139,143,163,0.15)", text: "var(--color-text-muted)" };
     }
@@ -58,6 +89,7 @@ export default function AlertsPage() {
       <div className="space-y-3">
         {alerts.map((alert) => {
           const colors = typeColor(alert.type);
+          const actionHref = alertActionHref(alert);
           return (
             <div
               key={alert.id}
@@ -78,15 +110,22 @@ export default function AlertsPage() {
                 </div>
                 <p className="text-sm" style={{ color: "var(--color-text)" }}>{alert.detail}</p>
               </div>
-              {!alert.acknowledged && (
-                <button
-                  onClick={() => handleAcknowledge(alert.id)}
-                  className="ml-4 px-3 py-1.5 rounded text-xs font-medium border cursor-pointer shrink-0"
-                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
-                >
-                  Dismiss
-                </button>
-              )}
+              <div className="flex items-center gap-2 ml-4 shrink-0">
+                {actionHref && (
+                  <Link href={actionHref} className="px-3 py-1.5 rounded text-xs font-medium border" style={{ borderColor: "var(--color-accent)", color: "var(--color-accent)" }}>
+                    {alertActionLabel(alert.type)}
+                  </Link>
+                )}
+                {!alert.acknowledged && (
+                  <button
+                    onClick={() => handleAcknowledge(alert.id)}
+                    className="px-3 py-1.5 rounded text-xs font-medium border cursor-pointer"
+                    style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

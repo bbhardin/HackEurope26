@@ -1,9 +1,9 @@
 import logging
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Query, Request, Response
 
 from app.config import WHATSAPP_VERIFY_TOKEN
-from app.whatsapp import parse_webhook_payload, process_incoming_message
+from app.whatsapp import parse_webhook_payload, process_incoming_message, IncomingMessage
 from app.pipeline import handle_incoming_message
 
 logger = logging.getLogger(__name__)
@@ -24,16 +24,20 @@ async def verify_webhook(
     return Response(content="Verification failed", status_code=403)
 
 
+async def _process_and_handle(msg: IncomingMessage) -> None:
+    try:
+        processed = await process_incoming_message(msg)
+        await handle_incoming_message(msg.sender_phone, processed.text, msg.message_type, processed.image_base64)
+    except Exception as e:
+        logger.error("Error processing message from %s: %s", msg.sender_phone, e)
+
+
 @router.post("")
-async def receive_webhook(request: Request) -> dict[str, str]:
+async def receive_webhook(request: Request, background_tasks: BackgroundTasks) -> dict[str, str]:
     payload = await request.json()
     messages = parse_webhook_payload(payload)
 
     for msg in messages:
-        try:
-            text_content = await process_incoming_message(msg)
-            await handle_incoming_message(msg.sender_phone, text_content, msg.message_type)
-        except Exception as e:
-            logger.error("Error processing message from %s: %s", msg.sender_phone, e)
+        background_tasks.add_task(_process_and_handle, msg)
 
     return {"status": "ok"}
