@@ -143,16 +143,8 @@ WhatsApp numbers have been integrated and should be reflected in the system.
 
 Create customer profiles with order context for:
 
-1. **+44 7460 880940** – Mantas  
-2. **+1 (812) 801-7698** – Ben  
-
-These customers should:
-- Be linked to the wholesaler.
-- Be able to send messages via WhatsApp into the application.
-
-On the flipside, we have a number representing the wholesaler. So any message sent from the application should automatically trigger a message from that number's WhatsApp to be sent to a customer number (the ones referenced above). The number for the wholsealer is:
-
-- **+49 170 3478722** – Mads
+1. **+44 7460 880940** – Mantas
+2. **+1 (812) 801-7698** – Ben
 
 ---
 
@@ -164,3 +156,9 @@ When a new customer messages the application:
 - Profile creation should trigger follow-up activity, such as:
   - Sending a welcome message.
 - Additional automated actions can be configurable by the user.
+
+---
+
+## 13. Background App Refresh
+
+Currently if any new input is incoming to the app, the user needs to refresh the app in order to see the new content. Instead of that, the app should refresh in the background (without disturbing the app responsiveness). Additionally, I woudl like you to think about the feasibility of multi-threading the app. Currently, if an image is uploaded and interpreted, nothing else in the app works because it is single threated. Give me feedback on that.
