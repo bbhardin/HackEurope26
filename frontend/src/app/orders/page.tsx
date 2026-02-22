@@ -217,7 +217,7 @@ export default function OrdersPage() {
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold">{order.customer_name}</p>
                     {order.flags && order.flags.length > 0 && order.flags.map((flag, i) => (
-                      <span key={i} className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: "var(--color-red)" }}>{flag.slice(0, 60)}</span>
+                      <span key={i} className="text-xs px-2 py-1 rounded leading-normal line-clamp-2" style={{ background: "rgba(239,68,68,0.15)", color: "var(--color-red)" }}>{flag.length > 120 ? flag.slice(0, 120) + "..." : flag}</span>
                     ))}
                   </div>
                   <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>{order.created_at.slice(0, 16).replace("T", " ")} · {order.items.length} items</p>
@@ -272,7 +272,7 @@ export default function OrdersPage() {
                           <tr key={item.id} className="border-t" style={{ borderColor: "var(--color-border)" }}>
                             <td className="py-2">
                               <p className="font-medium" style={{ color: item.matched_confidence < 0.7 ? "var(--color-amber)" : undefined }}>{item.product_name}</p>
-                              {item.original_text && <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>&quot;{item.original_text.slice(0, 60)}&quot;</p>}
+                              {item.original_text && <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>&quot;{item.original_text.length > 60 ? item.original_text.slice(0, 60) + "..." : item.original_text}&quot;</p>}
                             </td>
                             <td className="text-right py-2">{formatQty(item.quantity, item.unit_type)} {item.unit}</td>
                             <td className="text-right py-2">EUR {item.unit_price.toFixed(2)}</td>
