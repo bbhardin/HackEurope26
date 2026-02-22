@@ -435,3 +435,363 @@ Part A (consistent logging + source field) is low complexity. Part B (order-awar
 6. **#1 Health Score** — richer once more lifecycle events exist
 7. **#10 Multi-Channel** + **#8 SKU Clarification** — build on top of #3
 8. **#11 Bidirectional WhatsApp Logging** — builds on #3, #6, and #9; implement last
+
+---
+---
+
+## Detailed Implementation Todo List
+
+Organised into 8 phases following the recommended implementation order. Each phase groups related improvements. Within each phase, tasks are listed in dependency order — earlier tasks must complete before later ones.
+
+---
+
+### Phase A: Fulfilment Differential (Improvement #2)
+> Goal: Extend the order lifecycle with a `fulfilled` status, split the confirmation message from the delivery message, and add a "Mark Fulfilled" button.
+
+**Backend:**
+
+- [ ] **A.1** Schema: Add `fulfilled_at TEXT` column to `orders` table. Update the status comment to include `fulfilled`.
+  - File: `backend/app/schema.py`
+
+- [ ] **A.2** CRUD: Update `update_order_status()` to set `fulfilled_at = datetime.now()` when status is `fulfilled`. Add `get_orders_overview()` counts/values for fulfilled orders (fulfilled_count, fulfilled_value, fulfilled_today_count, fulfilled_today_value).
+  - File: `backend/app/crud.py`
+
+- [ ] **A.3** Orchestrator: Rewrite `generate_confirmation_message()` to only confirm receipt — remove the "Delivery: Next business day" line. Replace with: "Order received, [Customer]. We'll notify you when it's dispatched." Keep the line-item breakdown.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **A.4** Orchestrator: Add `generate_fulfilment_message(order)` — produces a delivery notification: "Your order has been dispatched, [Customer]. Expected delivery: [date/time]." with the same line-item breakdown.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **A.5** Orchestrator: Add `fulfil_order(order_id)` async function — calls `update_order_status(order_id, "fulfilled")`, generates fulfilment message, sends via WhatsApp, logs to conversations and agent_actions.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **A.6** Router: Add `POST /api/orders/{id}/fulfil` endpoint. Validate that order status is `confirmed` before allowing fulfilment. Call `fulfil_order()`.
+  - File: `backend/app/routers/orders.py`
+
+**Frontend:**
+
+- [ ] **A.7** Types: Add `fulfilled_at: string | null` to `Order`. Add `fulfilled_count`, `fulfilled_value`, `fulfilled_today_count`, `fulfilled_today_value` to `OrdersOverview`.
+  - File: `frontend/src/lib/types.ts`
+
+- [ ] **A.8** API: Add `fulfilOrder(id: string)` function calling `POST /api/orders/{id}/fulfil`.
+  - File: `frontend/src/lib/api.ts`
+
+- [ ] **A.9** Order Queue: Add "Fulfilled" to the filter tabs. Show a blue "Mark Fulfilled" button on orders with status `confirmed`. Clicking calls `fulfilOrder()` and refreshes.
+  - File: `frontend/src/app/orders/page.tsx`
+
+- [ ] **A.10** Overview: Add a "Fulfilled Today" KPI card showing `fulfilled_today_count` and `fulfilled_today_value`. Rearrange grid to 5 cards or keep 4 and replace the "Total Confirmed" card with "Fulfilled Today".
+  - File: `frontend/src/app/page.tsx`
+
+- [ ] **A.11** Seed data: Update some historical orders to have status `fulfilled` with `fulfilled_at` timestamps so the dashboard isn't empty on first load.
+  - File: `backend/app/seed.py`
+
+- [ ] **A.12** Typecheck: Run `npx tsc --noEmit` to confirm no type errors introduced.
+
+---
+
+### Phase B: Data Quality — Full Units (#7) + Flagged Clarification (#4)
+> Goal: Fix nonsensical decimal quantities for discrete units. Make flagged order reasons visible.
+
+**Improvement #7 — Full Units:**
+
+- [ ] **B.1** Schema: Add `unit_type TEXT NOT NULL DEFAULT 'continuous'` column to `products` table. Values: `continuous` (kg, L) or `discrete` (pc, bottle, bag, box, tray, can, jar, bunch, tub, pack, bucket).
+  - File: `backend/app/schema.py`
+
+- [ ] **B.2** Seed: For each product in `CATEGORIES`, assign the correct `unit_type` based on its unit. Update the `seed_products()` function to insert `unit_type`. Update `seed_order_history()` to round quantities to integers for discrete-unit products.
+  - File: `backend/app/seed.py`
+
+- [ ] **B.3** CRUD: Add `get_product_unit_type(product_id) -> str` helper. Add `validate_quantity(product_id, quantity) -> float` that rounds to int if the product's unit is discrete, returns as-is if continuous.
+  - File: `backend/app/crud.py`
+
+- [ ] **B.4** Orchestrator: In `_handle_order_intent()`, call `validate_quantity()` on each item's quantity before passing to `create_order()`.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **B.5** Customer Agent: In `_execute_tool()` for `search_product_catalogue`, include `unit_type` in the returned product data so the LLM knows to output whole numbers for discrete items.
+  - File: `backend/app/customer_agent.py`
+
+- [ ] **B.6** Frontend: In the Order Queue item table, format quantities without decimals when the item's unit is discrete. This requires the `unit_type` field to be available on `OrderItem` — either add it to the type, or infer from the unit string on the frontend using the same continuous/discrete mapping.
+  - File: `frontend/src/app/orders/page.tsx`, `frontend/src/lib/types.ts`
+
+**Improvement #4 — Flagged Clarification:**
+
+- [ ] **B.7** Schema: Add `flags_json TEXT` column to `orders` table (nullable, default NULL).
+  - File: `backend/app/schema.py`
+
+- [ ] **B.8** CRUD: Update `create_order()` to accept an optional `flags: list[str]` parameter and store it as JSON in `flags_json`. Update `get_order_by_id()` to parse and return `flags_json` as a list.
+  - File: `backend/app/crud.py`
+
+- [ ] **B.9** Orchestrator: In `_handle_order_intent()`, pass the `anomalies` list from the agent output to `create_order(..., flags=anomalies)`. Also pass the `notes` field if non-empty.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **B.10** Customer Agent: In the fallback parser, differentiate flag types. Instead of the generic "Fallback parser — items may not be accurate", use specific messages: "Low confidence: order parsed without LLM (fallback mode)". For genuine anomalies, prefix with "Quantity anomaly:" or "Unmatched product:".
+  - File: `backend/app/customer_agent.py`
+
+- [ ] **B.11** Frontend types: Add `flags: string[] | null` to the `Order` type.
+  - File: `frontend/src/lib/types.ts`
+
+- [ ] **B.12** Frontend Order Queue: When an order has non-empty `flags`, display them as amber/red badges below the order summary line. Show before the expand/collapse area so they're visible at a glance.
+  - File: `frontend/src/app/orders/page.tsx`
+
+- [ ] **B.13** Re-seed and typecheck: Run `python -m app.seed` to regenerate demo data with integer quantities for discrete units. Run `npx tsc --noEmit`.
+
+---
+
+### Phase C: Message API Integration (#6)
+> Goal: Configure real Meta WhatsApp credentials and verify end-to-end message flow.
+
+- [ ] **C.1** Receive Meta WhatsApp Developer Key and Phone Number ID from the team.
+
+- [ ] **C.2** Populate `backend/.env` with `META_WHATSAPP_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`.
+
+- [ ] **C.3** Deploy the backend (Railway/Fly.io) and configure the Meta webhook URL to point to the deployed `/webhook` endpoint. Set `WHATSAPP_VERIFY_TOKEN` to match.
+
+- [ ] **C.4** Test webhook verification: confirm Meta's verification GET request succeeds.
+
+- [ ] **C.5** Test inbound: send a WhatsApp message from a real phone to the business number. Confirm it arrives at the webhook, flows through the pipeline, and creates a pending order on the dashboard.
+
+- [ ] **C.6** Test outbound: approve the order on the dashboard. Confirm the WhatsApp confirmation message arrives on the real phone.
+
+- [ ] **C.7** If Meta's message template rules require pre-approved templates for business-initiated messages, adjust `send_whatsapp_message()` in `backend/app/whatsapp.py` to use template messages where required (e.g., for nudges, which are business-initiated outside the 24h conversation window).
+
+---
+
+### Phase D: Demand Overview (#5) + Manual Response (#3)
+> Goal: Add the aggregated demand page and enable manual messaging from the dashboard.
+
+**Improvement #5 — Demand Overview:**
+
+- [ ] **D.1** CRUD: Add `get_aggregated_items(statuses: list[str]) -> list[dict]` — SQL query joining `order_items → orders → products`, filtering by order status IN (statuses), GROUP BY product_id, returning product_name, sku, category, unit, SUM(quantity) as total_quantity, COUNT(DISTINCT order_id) as order_count.
+  - File: `backend/app/crud.py`
+
+- [ ] **D.2** Router: Add `GET /api/orders/aggregate` endpoint with optional `status` query param (default: `confirmed`). Supports comma-separated statuses like `?status=confirmed,pending_confirmation`.
+  - File: `backend/app/routers/orders.py`
+
+- [ ] **D.3** Frontend types: Add `AggregatedItem` interface: `{ product_id: string, product_name: string, sku: string, category: string, unit: string, total_quantity: number, order_count: number }`.
+  - File: `frontend/src/lib/types.ts`
+
+- [ ] **D.4** Frontend API: Add `getAggregatedItems(status?: string): Promise<AggregatedItem[]>` calling `GET /api/orders/aggregate`.
+  - File: `frontend/src/lib/api.ts`
+
+- [ ] **D.5** Sidebar: Add "Demand Overview" nav item with route `/demand` and icon "▤".
+  - File: `frontend/src/components/Sidebar.tsx`
+
+- [ ] **D.6** New page: Create `frontend/src/app/demand/page.tsx`. Table with columns: Product Name, SKU, Category, Unit, Total Qty, Orders. Status filter dropdown at top (Confirmed / Pending / All Active). Auto-refresh every 5 seconds.
+  - File: `frontend/src/app/demand/page.tsx` (new)
+
+**Improvement #3 — Manual Response:**
+
+- [ ] **D.7** Orchestrator: Add `send_manual_message(customer_id, message_text, order_id=None)` async function. Sends via WhatsApp, logs to conversations with `parsed_intent = "manual_message"`, logs to agent_actions with `agent_type = "wholesaler"`.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **D.8** Router (orders): Add `POST /api/orders/{id}/message` endpoint accepting `{ message: string }`. Looks up the order's customer, calls `send_manual_message()`.
+  - File: `backend/app/routers/orders.py`
+
+- [ ] **D.9** Router (customers): Add `POST /api/customers/{id}/message` endpoint accepting `{ message: string }`. Calls `send_manual_message()` without an order_id.
+  - File: `backend/app/routers/customers.py`
+
+- [ ] **D.10** Frontend API: Add `sendOrderMessage(orderId: string, message: string)` and `sendCustomerMessage(customerId: string, message: string)`.
+  - File: `frontend/src/lib/api.ts`
+
+- [ ] **D.11** Frontend Order Queue: In the expanded order detail view, add a text input and "Send Message" button below the order items. On submit, call `sendOrderMessage()`, clear input, show brief success toast.
+  - File: `frontend/src/app/orders/page.tsx`
+
+- [ ] **D.12** Frontend Customer Detail: Add a text input and "Send" button at the bottom of the conversation history section. On submit, call `sendCustomerMessage()`, clear input, reload conversations.
+  - File: `frontend/src/app/customers/[id]/page.tsx`
+
+- [ ] **D.13** Fulfilment + Manual Message integration: Update the "Mark Fulfilled" button to optionally show a text input for a custom delivery message. If empty, use the default `generate_fulfilment_message()`. If filled, use the custom text instead.
+  - File: `frontend/src/app/orders/page.tsx`, `backend/app/routers/orders.py` (add optional `message` body param to `/fulfil`)
+
+- [ ] **D.14** Typecheck: Run `npx tsc --noEmit`.
+
+---
+
+### Phase E: Manual Override of Order Details (#9)
+> Goal: Allow the wholesaler to edit order items directly from the dashboard.
+
+- [ ] **E.1** Router: Add `PUT /api/orders/{id}` endpoint accepting `{ items: [{ product_id, quantity, unit_price }] }`. Validates the order exists. Calls `update_order_items()`. Logs the edit in `agent_actions` with `agent_type: "wholesaler"`, `action: "manual_edit"`. If order was `confirmed`, resets to `pending_confirmation`.
+  - File: `backend/app/routers/orders.py`
+
+- [ ] **E.2** Router: Add `GET /api/products` endpoint (if not already present) returning all products for the product search dropdown. Also add `GET /api/products/search?q=...` for filtered search.
+  - File: `backend/app/routers/orders.py` or new `backend/app/routers/products.py`
+
+- [ ] **E.3** Frontend API: Add `updateOrderItems(orderId: string, items: EditableItem[])` calling `PUT /api/orders/{id}`. Add `searchProducts(query: string)` calling `GET /api/products/search`.
+  - File: `frontend/src/lib/api.ts`
+
+- [ ] **E.4** Frontend types: Add `EditableItem` interface: `{ product_id: string, quantity: number, unit_price: number }`. Add `Product` interface if not present.
+  - File: `frontend/src/lib/types.ts`
+
+- [ ] **E.5** Frontend Order Queue — Edit mode: In the expanded order detail, add an "Edit" button that toggles edit mode. In edit mode:
+  - Each quantity cell becomes an input field
+  - Each row shows a delete (X) button
+  - An "Add Item" row appears at the bottom with a product search input
+  - "Save" and "Cancel" buttons replace Approve/Reject
+  - On Save: call `updateOrderItems()`, exit edit mode, refresh
+  - On Cancel: discard changes, exit edit mode
+  - File: `frontend/src/app/orders/page.tsx`
+
+- [ ] **E.6** Typecheck: Run `npx tsc --noEmit`.
+
+---
+
+### Phase F: Health Score Clarification (#1)
+> Goal: Replace the static health score with an event-driven system that explains *why* a customer's health is what it is.
+
+- [ ] **F.1** Schema: Add `customer_health_events` table: `(id TEXT PK, customer_id TEXT FK, event_type TEXT, severity TEXT, detail TEXT, created_at TEXT)`.
+  - File: `backend/app/schema.py`
+
+- [ ] **F.2** CRUD: Add `create_health_event(customer_id, event_type, severity, detail)` — inserts a health event and then calls `recompute_health_score(customer_id)`. Add `recompute_health_score(customer_id)` — queries health events from the last 28 days, applies the weighted formula (critical: -0.15, warning: -0.05, info: +0.02), clamps to [0,1], updates `customers.health_score`. Add `get_health_events(customer_id, limit=20)`.
+  - File: `backend/app/crud.py`
+
+- [ ] **F.3** Nudge Scheduler: After detecting an overdue customer, call `create_health_event(customer_id, "missed_order", "warning", "Overdue by {days} days on usual {day} order")`. For high-risk churn (7+ days), use severity `critical`.
+  - File: `backend/app/nudge_scheduler.py`
+
+- [ ] **F.4** Orchestrator: After `approve_order()`, call `create_health_event(customer_id, "returned_to_normal", "info", "Order confirmed")`. After `reject_order()`, call `create_health_event(customer_id, "order_anomaly", "warning", "Order rejected")`.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **F.5** Router: Add `GET /api/customers/{id}/health-events` endpoint returning `get_health_events(customer_id)`.
+  - File: `backend/app/routers/customers.py`
+
+- [ ] **F.6** Seed: Generate health events for each customer based on their seeded order history. Customers with low health scores should have some `missed_order` events. Run `recompute_health_score()` for each customer at the end of seeding.
+  - File: `backend/app/seed.py`
+
+- [ ] **F.7** Frontend types: Add `HealthEvent` interface: `{ id: string, customer_id: string, event_type: string, severity: string, detail: string, created_at: string }`.
+  - File: `frontend/src/lib/types.ts`
+
+- [ ] **F.8** Frontend API: Add `getHealthEvents(customerId: string): Promise<HealthEvent[]>`.
+  - File: `frontend/src/lib/api.ts`
+
+- [ ] **F.9** Frontend Customer List: Below the health score percentage, show the most recent health event as a one-line summary. E.g., "Missed Tuesday order · 3 days ago" in amber, or "Order confirmed · today" in green.
+  - File: `frontend/src/app/customers/page.tsx`
+
+- [ ] **F.10** Frontend Customer Detail: Add a "Health Timeline" section (below the context section, above orders/conversations). Scrollable list of health events with severity badges (green for info, amber for warning, red for critical), event type, detail text, and relative timestamp.
+  - File: `frontend/src/app/customers/[id]/page.tsx`
+
+- [ ] **F.11** Typecheck: Run `npx tsc --noEmit`.
+
+---
+
+### Phase G: Multi-Channel Tracking (#10) + SKU Clarification (#8)
+> Goal: Enable logging of off-platform communication. Add a clarification flow for uncertain product matches.
+
+**Improvement #10 — Multi-Channel Communication:**
+
+- [ ] **G.1** Router: Add `POST /api/customers/{id}/note` endpoint accepting `{ channel: string, message: string, order_id?: string }`. Calls `save_conversation(customer_id, "inbound", message, "manual_note", channel)`. If `order_id` is provided, also creates an alert linking the note to that order.
+  - File: `backend/app/routers/customers.py`
+
+- [ ] **G.2** Frontend API: Add `logCommunication(customerId: string, channel: string, message: string, orderId?: string)`.
+  - File: `frontend/src/lib/api.ts`
+
+- [ ] **G.3** Frontend Customer Detail: Add a "Log Communication" button that expands a form: channel dropdown (Phone, Email, In-person, Other), free-text note, optional order ID dropdown (populated from customer's recent orders). On submit, call `logCommunication()`, collapse form, reload conversations.
+  - File: `frontend/src/app/customers/[id]/page.tsx`
+
+- [ ] **G.4** Frontend Conversation Timeline: Update badge colours per channel. Currently all show WhatsApp badges. Add: Phone (blue), Email (amber), In-person (grey), Other (grey). Differentiate the "manual_note" parsed_intent from regular messages with a "Note" label.
+  - File: `frontend/src/app/customers/[id]/page.tsx`
+
+**Improvement #8 — SKU Catalogue Discrepancy:**
+
+- [ ] **G.5** Schema: Add `needs_clarification` to the documented status values in the status comment on the `orders` table. (No actual schema change needed — status is a TEXT field.)
+  - File: `backend/app/schema.py` (comment only)
+
+- [ ] **G.6** Orchestrator: In `_handle_order_intent()`, after creating the order, check if any item has `matched_confidence < 0.7`. If so, set order status to `needs_clarification`. Generate a clarification message listing the uncertain items with alternatives from the product catalogue. Send via WhatsApp. Log to conversations and agent_actions.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **G.7** Customer Agent: In the structured output, add an `unmatched_items` list (separate from `items`) for products the agent couldn't match at all. Each entry includes the original text and top 2–3 candidate matches with scores.
+  - File: `backend/app/customer_agent.py`
+
+- [ ] **G.8** Router: Add `POST /api/orders/{id}/clarify` endpoint accepting `{ message: string }`. Sends the message to the customer via WhatsApp. Keeps order in `needs_clarification` status until the customer replies and the agent resolves the ambiguity (handled by the normal inbound pipeline).
+  - File: `backend/app/routers/orders.py`
+
+- [ ] **G.9** Frontend API: Add `clarifyOrder(orderId: string, message: string)`.
+  - File: `frontend/src/lib/api.ts`
+
+- [ ] **G.10** Frontend Order Queue: Add "Needs Clarification" to the filter tabs. For orders in `needs_clarification` status, show a "Clarify" button alongside Approve/Reject. Also show which items are uncertain (highlight rows with `matched_confidence < 0.7` in amber). Clicking "Clarify" opens a text input pre-filled with a suggested clarification message, editable before sending.
+  - File: `frontend/src/app/orders/page.tsx`
+
+- [ ] **G.11** Typecheck: Run `npx tsc --noEmit`.
+
+---
+
+### Phase H: Bidirectional WhatsApp Logging (#11)
+> Goal: Ensure all outbound messages are consistently logged with source tags. When the wholesaler sends a manual message, detect order-relevant changes and offer to apply them.
+
+**Part A — Consistent outbound logging:**
+
+- [ ] **H.1** Schema: Add `source TEXT NOT NULL DEFAULT 'system'` column to `conversations` table. Values: `system` (auto-generated), `manual` (wholesaler-typed).
+  - File: `backend/app/schema.py`
+
+- [ ] **H.2** CRUD: Update `save_conversation()` to accept an optional `source` parameter (default `"system"`). Pass it through to the INSERT.
+  - File: `backend/app/crud.py`
+
+- [ ] **H.3** Audit outbound logging: Review every call to `send_whatsapp_message()` across the codebase and ensure a `save_conversation()` call follows. Specifically check:
+  - `orchestrator.py`: `approve_order`, `reject_order`, `fulfil_order`, `_handle_remind_intent`, `_handle_general_intent`, `_handle_modify_intent`, `substitute_item`, `send_manual_message` → all should log with `source="system"` except `send_manual_message` which uses `source="manual"`
+  - `nudge_scheduler.py`: `run_nudge_scan` → ensure nudge messages are logged with `source="system"`
+  - File: `backend/app/orchestrator.py`, `backend/app/nudge_scheduler.py`
+
+- [ ] **H.4** Frontend types: Add `source: "system" | "manual"` to `Conversation` type.
+  - File: `frontend/src/lib/types.ts`
+
+- [ ] **H.5** Frontend Conversation Timeline: Display a subtle "auto" tag on system-generated outbound messages. Manual messages show as normal outbound messages without the tag. This visually distinguishes "the system sent this" from "the wholesaler typed this".
+  - File: `frontend/src/app/customers/[id]/page.tsx`
+
+**Part B — Order-aware outbound analysis:**
+
+- [ ] **H.6** Customer Agent: Add `analyse_outbound_message(customer_id, message_text, pending_orders)` function. Uses the Claude API in a lightweight mode — system prompt asks: "A wholesaler sent this message to a customer. Does it imply any changes to the customer's pending orders? If so, return the changes as structured JSON." Returns a list of `DetectedOrderChange` objects or an empty list.
+  - File: `backend/app/customer_agent.py`
+
+- [ ] **H.7** Orchestrator: Update `send_manual_message()` to call `analyse_outbound_message()` after sending. Return the detected changes in the response dict.
+  - File: `backend/app/orchestrator.py`
+
+- [ ] **H.8** Router: Update `POST /api/orders/{id}/message` and `POST /api/customers/{id}/message` response format to include `detected_changes: list[dict]` in the JSON response. Each change has: `order_id`, `action` (add/remove/change_quantity), `product_id`, `product_name`, `quantity_change`, `confidence`.
+  - File: `backend/app/routers/orders.py`, `backend/app/routers/customers.py`
+
+- [ ] **H.9** Frontend types: Add `DetectedOrderChange` interface: `{ order_id: string, action: string, product_id: string, product_name: string, quantity_change: number, confidence: number }`. Update `sendOrderMessage` and `sendCustomerMessage` return types to include `detected_changes`.
+  - File: `frontend/src/lib/types.ts`, `frontend/src/lib/api.ts`
+
+- [ ] **H.10** Frontend Order Queue: After `sendOrderMessage()` returns, check if `detected_changes` is non-empty. If so, show a confirmation modal/banner: "Detected order change: [description]. Apply this change?" with "Apply" and "Dismiss" buttons. "Apply" calls `updateOrderItems()` (from Phase E). "Dismiss" does nothing.
+  - File: `frontend/src/app/orders/page.tsx`
+
+- [ ] **H.11** Frontend Customer Detail: Same logic as H.10 but for `sendCustomerMessage()`. If changes are detected, show the confirmation prompt with the relevant order ID linked.
+  - File: `frontend/src/app/customers/[id]/page.tsx`
+
+- [ ] **H.12** Typecheck and E2E test: Run `npx tsc --noEmit`. Test the full flow: send a manual message that implies an order change → confirm the detection prompt appears → click Apply → verify the order was updated.
+
+---
+
+### Phase Summary & Dependencies
+
+```
+Phase A: Fulfilment Differential (#2) ─────────────────────┐
+                                                            │
+Phase B: Full Units (#7) + Flagged (#4) ───────────────────┤  (parallel with A)
+                                                            │
+Phase C: Message API (#6) ─────────────────────────────────┤  (parallel, needs credentials)
+                                                            │
+           ┌────────────────────────────────────────────────┘
+           │ (A, B, C should complete before D)
+           ▼
+Phase D: Demand Overview (#5) + Manual Response (#3) ──────┐
+                                                            │
+           ┌────────────────────────────────────────────────┘
+           │ (D must complete before E)
+           ▼
+Phase E: Manual Override (#9) ─────────────────────────────┐
+                                                            │
+           ┌────────────────────────────────────────────────┘
+           │ (E should complete before F, G, H)
+           ▼
+Phase F: Health Score (#1) ─────────────────────────────────┐  (parallel with G)
+                                                            │
+Phase G: Multi-Channel (#10) + SKU Clarification (#8) ─────┤  (parallel with F)
+                                                            │
+           ┌────────────────────────────────────────────────┘
+           │ (F + G should complete before H)
+           ▼
+Phase H: Bidirectional WhatsApp Logging (#11)
+```
+
+**Parallelisation opportunities:**
+- Phases A, B, and C can be worked on simultaneously by different team members
+- Phases F and G can be worked on simultaneously
+- Each phase's backend and frontend tasks can be split between team members
+
+**Total task count:** 78 tasks across 8 phases
