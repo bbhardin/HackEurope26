@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getCustomer, getCustomerContext, getCustomerOrders, getCustomerConversations, getHealthEvents, sendCustomerMessage, logCommunication, getNudgeSuggestions, sendNudge, dismissNudge, getCustomerSuggestions } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import type { Customer, CustomerContext, Order, Conversation, HealthEvent, DetectedOrderChange, NudgeSuggestion } from "@/lib/types";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -26,6 +27,7 @@ export default function CustomerDetailPage() {
   const [nudges, setNudges] = useState<NudgeSuggestion[]>([]);
   const [nudgeMsg, setNudgeMsg] = useState("");
   const [msgSuggestions, setMsgSuggestions] = useState<string[]>([]);
+  const [chartPeriod, setChartPeriod] = useState<"week" | "month">("week");
   const { showToast } = useToast();
 
   const loadData = () => {
@@ -320,6 +322,76 @@ export default function CustomerDetailPage() {
           </div>
         </div>
       </div>
+
+      {(() => {
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+        const buckets: Record<string, { label: string; value: number }> = {};
+        orders
+          .filter(o => o.status === "fulfilled" && new Date(o.created_at) >= threeMonthsAgo)
+          .forEach(o => {
+            const d = new Date(o.created_at);
+            let key: string, label: string;
+            if (chartPeriod === "month") {
+              key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+              label = d.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+            } else {
+              const mon = new Date(d);
+              mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+              key = mon.toISOString().slice(0, 10);
+              label = mon.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+            }
+            if (!buckets[key]) buckets[key] = { label, value: 0 };
+            buckets[key].value += o.total_value;
+          });
+
+        const chartData = Object.entries(buckets)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([, { label, value }]) => ({ date: label, value: Math.round(value) }));
+
+        if (chartData.length === 0) return null;
+        return (
+          <div className="mt-6 rounded-lg border p-5" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Order Value — Last 3 Months</h3>
+              <div className="flex gap-1">
+                {(["week", "month"] as const).map(p => (
+                  <button key={p} onClick={() => setChartPeriod(p)}
+                    className="text-xs px-3 py-1 rounded cursor-pointer capitalize"
+                    style={{
+                      background: chartPeriod === p ? "var(--color-accent)" : "var(--color-bg)",
+                      color: chartPeriod === p ? "#fff" : "var(--color-text-muted)",
+                      border: `1px solid ${chartPeriod === p ? "var(--color-accent)" : "var(--color-border)"}`,
+                    }}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="orderValueGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f8cff" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#4f8cff" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} tickLine={false} axisLine={false}
+                  tickFormatter={v => `€${Number(v).toLocaleString()}`} width={70} />
+                <Tooltip
+                  contentStyle={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "6px", fontSize: "12px" }}
+                  labelStyle={{ color: "var(--color-text-muted)" }}
+                  formatter={(v: number) => [`EUR ${v.toLocaleString()}`, "Total Value"]}
+                />
+                <Area type="monotone" dataKey="value" stroke="#4f8cff" strokeWidth={2} fill="url(#orderValueGradient)" dot={{ r: 3, fill: "#4f8cff" }} activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })()}
     </div>
   );
 }

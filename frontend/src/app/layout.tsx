@@ -13,6 +13,7 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Wholesaler AI Dashboard",
   description: "AI-powered order management for food & beverage wholesalers",
+  icons: { icon: "/logo.png" },
 };
 
 export default function RootLayout({
