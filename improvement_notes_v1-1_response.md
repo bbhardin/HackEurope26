@@ -387,6 +387,7 @@ If the wholesaler replies directly via their WhatsApp phone app (not through the
 
 ### Complexity: Medium–High
 Part A (consistent logging) is low complexity. Part B (order-aware analysis) is medium — it reuses the Customer Agent's LLM capabilities in a new context. Part C (WhatsApp app replies) has inherent platform limitations.
+# Edit: I agree with you, do not worry about Part C, but implement part A and B, please.
 
 ---
 
