@@ -8,6 +8,7 @@ from app.crud import (
     save_conversation,
     log_agent_action,
     create_alert,
+    create_health_event,
     update_order_pattern,
 )
 from app.whatsapp import send_whatsapp_message
@@ -64,6 +65,8 @@ async def run_nudge_scan() -> dict:
                 detail += f"Order value declining by {decline_pct:.0f}% over recent orders."
 
             create_alert("churn_risk", customer_id, detail)
+            severity = "critical" if days_overdue >= 7 else "warning"
+            create_health_event(customer_id, "missed_order", severity, f"Overdue by {days_overdue} days")
             alerts_created += 1
 
             log_agent_action(

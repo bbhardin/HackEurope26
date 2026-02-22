@@ -67,10 +67,12 @@ export default function OverviewPage() {
 
   const statusColor = (status: string) => {
     switch (status) {
-      case "confirmed": return "var(--color-green)";
+      case "fulfilled": return "var(--color-green)";
+      case "confirmed": return "#22d3ee";
       case "pending_confirmation": return "var(--color-amber)";
       case "flagged": return "var(--color-red)";
       case "rejected": return "var(--color-red)";
+      case "needs_clarification": return "var(--color-amber)";
       default: return "var(--color-text-muted)";
     }
   };
@@ -80,11 +82,12 @@ export default function OverviewPage() {
       <h2 className="text-2xl font-bold mb-6">Order Overview</h2>
 
       {overview && (
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          <KpiCard label="Pending Orders" value={String(overview.pending_count)} sub={`EUR ${overview.pending_value.toLocaleString()}`} color="var(--color-amber)" />
-          <KpiCard label="Confirmed Today" value={String(overview.confirmed_today_count)} sub={`EUR ${overview.confirmed_today_value.toLocaleString()}`} color="var(--color-green)" />
-          <KpiCard label="Total Confirmed" value={String(overview.confirmed_all_count)} sub={`EUR ${overview.confirmed_all_value.toLocaleString()}`} color="var(--color-accent)" />
-          <KpiCard label="Flagged / Rejected" value={`${overview.flagged_count} / ${overview.rejected_count}`} color="var(--color-red)" />
+        <div className="grid grid-cols-5 gap-4 mb-8">
+          <KpiCard label="Pending" value={String(overview.pending_count)} sub={`EUR ${overview.pending_value.toLocaleString()}`} color="var(--color-amber)" />
+          <KpiCard label="Confirmed" value={String(overview.confirmed_all_count)} sub={`EUR ${overview.confirmed_all_value.toLocaleString()}`} color="#22d3ee" />
+          <KpiCard label="Fulfilled Today" value={String(overview.fulfilled_today_count)} sub={`EUR ${overview.fulfilled_today_value.toLocaleString()}`} color="var(--color-green)" />
+          <KpiCard label="Total Fulfilled" value={String(overview.fulfilled_all_count)} sub={`EUR ${overview.fulfilled_all_value.toLocaleString()}`} color="var(--color-accent)" />
+          <KpiCard label="Flagged / Rejected" value={`${overview.flagged_count} / ${overview.rejected_count}`} sub={overview.needs_clarification_count > 0 ? `${overview.needs_clarification_count} need clarification` : undefined} color="var(--color-red)" />
         </div>
       )}
 
@@ -139,42 +142,18 @@ export default function OverviewPage() {
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <label className="text-xs font-medium mb-1 block" style={{ color: "var(--color-text-muted)" }}>Phone Number</label>
-            <input
-              className="w-full px-3 py-2 rounded border text-sm"
-              style={{ background: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }}
-              value={simPhone}
-              onChange={(e) => setSimPhone(e.target.value)}
-            />
+            <input className="w-full px-3 py-2 rounded border text-sm" style={{ background: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }} value={simPhone} onChange={(e) => setSimPhone(e.target.value)} />
           </div>
           <div>
             <label className="text-xs font-medium mb-1 block" style={{ color: "var(--color-text-muted)" }}>Message</label>
-            <input
-              className="w-full px-3 py-2 rounded border text-sm"
-              style={{ background: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }}
-              value={simMessage}
-              onChange={(e) => setSimMessage(e.target.value)}
-            />
+            <input className="w-full px-3 py-2 rounded border text-sm" style={{ background: "var(--color-bg)", borderColor: "var(--color-border)", color: "var(--color-text)" }} value={simMessage} onChange={(e) => setSimMessage(e.target.value)} />
           </div>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={handleSimulate}
-            className="px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer"
-            style={{ background: "var(--color-accent)", color: "#fff" }}
-          >
-            Send Simulated Message
-          </button>
-          <button
-            onClick={handleNudge}
-            className="px-4 py-2 rounded text-sm font-medium border transition-colors cursor-pointer"
-            style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}
-          >
-            Trigger Nudge Scan
-          </button>
+          <button onClick={handleSimulate} className="px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer" style={{ background: "var(--color-accent)", color: "#fff" }}>Send Simulated Message</button>
+          <button onClick={handleNudge} className="px-4 py-2 rounded text-sm font-medium border transition-colors cursor-pointer" style={{ borderColor: "var(--color-border)", color: "var(--color-text)" }}>Trigger Nudge Scan</button>
         </div>
-        {simStatus && (
-          <p className="text-xs mt-2" style={{ color: "var(--color-text-muted)" }}>{simStatus}</p>
-        )}
+        {simStatus && <p className="text-xs mt-2" style={{ color: "var(--color-text-muted)" }}>{simStatus}</p>}
       </div>
     </div>
   );

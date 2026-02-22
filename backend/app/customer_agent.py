@@ -306,9 +306,9 @@ def _fallback_parse(customer_id: str, text_content: str) -> dict:
             "intent": "place_order" if items else "general_inquiry",
             "confidence": 0.5,
             "items": items,
-            "anomalies": ["Fallback parser — items may not be accurate"],
+            "anomalies": ["Low confidence: order parsed without LLM (fallback mode)"],
             "response_text": "",
-            "notes": "Fallback parser used — LLM unavailable",
+            "notes": "Low confidence: parsed via fallback (LLM unavailable)",
         }
 
     return {
@@ -319,3 +319,86 @@ def _fallback_parse(customer_id: str, text_content: str) -> dict:
         "response_text": "Thank you for your message. A member of our team will get back to you shortly.",
         "notes": "Fallback parser used — LLM unavailable",
     }
+
+
+OUTBOUND_ANALYSIS_PROMPT = """You are analysing an OUTBOUND message sent by a wholesaler to a customer.
+Determine if this message implies any changes to the customer's pending or confirmed orders.
+
+Look for language like:
+- "I'll remove X from your order"
+- "We'll add Y to your order"
+- "I'll change the quantity of X to Y"
+- "We're out of X"
+
+If the message implies order changes, return JSON:
+{
+  "has_changes": true,
+  "changes": [
+    {
+      "action": "remove_item|add_item|change_quantity",
+      "product_name": "product name mentioned",
+      "product_id": "matched product id if known",
+      "quantity_change": -1,
+      "confidence": 0.9
+    }
+  ]
+}
+
+If no order changes are implied, return: {"has_changes": false, "changes": []}
+"""
+
+
+async def analyse_outbound_message(customer_id: str, message_text: str) -> list[dict]:
+    if not client:
+        return []
+
+    pending = get_orders_by_status("pending_confirmation")
+    confirmed = get_orders_by_status("confirmed")
+    customer_orders = [o for o in pending + confirmed if o["customer_id"] == customer_id]
+
+    if not customer_orders:
+        return []
+
+    orders_summary = json.dumps([
+        {"id": o["id"], "status": o["status"], "items": [
+            {"product_id": i["product_id"], "product_name": i.get("product_name", ""), "quantity": i["quantity"]}
+            for i in o.get("items", [])
+        ]}
+        for o in customer_orders[:5]
+    ], indent=2)
+
+    user_msg = f"""CUSTOMER'S ACTIVE ORDERS:
+{orders_summary}
+
+OUTBOUND MESSAGE FROM WHOLESALER:
+{message_text}
+
+Analyse if this message implies any changes to the customer's orders. Return JSON only."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            system=OUTBOUND_ANALYSIS_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+
+        result_text = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                result_text += block.text
+
+        json_start = result_text.find("{")
+        json_end = result_text.rfind("}") + 1
+        if json_start >= 0 and json_end > json_start:
+            parsed = json.loads(result_text[json_start:json_end])
+            if parsed.get("has_changes") and parsed.get("changes"):
+                changes = parsed["changes"]
+                for change in changes:
+                    if not change.get("order_id") and customer_orders:
+                        change["order_id"] = customer_orders[0]["id"]
+                return changes
+        return []
+    except Exception as e:
+        logger.error("Outbound analysis failed: %s", e)
+        return []

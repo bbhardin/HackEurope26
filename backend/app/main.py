@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import FRONTEND_URL
-from app.routers import health, orders, webhook, nudge, customers, alerts, activity, simulate
+from app.routers import health, orders, webhook, nudge, customers, alerts, activity, simulate, products
 
 app = FastAPI(title="Wholesaler AI Agent", version="0.1.0")
 
@@ -22,3 +22,4 @@ app.include_router(customers.router)
 app.include_router(alerts.router)
 app.include_router(activity.router)
 app.include_router(simulate.router)
+app.include_router(products.router)
