@@ -427,6 +427,16 @@ async def reject_order(order_id: str) -> dict:
     if not order:
         return {"error": "Order not found"}
 
+    customer_name = order.get("customer_name", "Customer")
+    rejection_msg = (
+        f"Hi {customer_name}, unfortunately we are unable to fulfil your recent order. "
+        f"Please contact us if you have any questions or would like to place a new order."
+    )
+    phone = order.get("customer_whatsapp", "")
+    if phone:
+        await send_whatsapp_message(phone, rejection_msg)
+        save_conversation(order["customer_id"], "outbound", rejection_msg, "order_rejected")
+
     create_health_event(order["customer_id"], "order_anomaly", "warning", "Order rejected by wholesaler")
 
     log_agent_action("orchestrator", "order_rejected", "order", order_id, {"total_value": order["total_value"]})
