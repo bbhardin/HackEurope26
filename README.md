@@ -4,7 +4,7 @@
 
 # Kuna — AI Order Agent for Food & Beverage Wholesalers
 
-> *Built at HackEurope 2026 in 30 hours.*
+> *Built at [HackEurope 2026 Dublin](https://www.hackeurope.com/) in 30 hours.*
 
 **Kuna** is your wholesale AI agent to connect with customers using the channels they prefer. It reads every customer order, structures it instantly, and holds it for your one-click approval. No new tools for your customers. No behaviour change. Just faster, smarter order processing.
 
