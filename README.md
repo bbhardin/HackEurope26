@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Kuna — AI Order Agent for Food & Beverage Wholesalers
 
 > *Built at HackEurope 2026 in 30 hours.*
@@ -323,3 +324,6 @@ Chef Davis replies *"Yes."* Done. Order confirmed, no manual work required.
 ---
 
 *Built at HackEurope 2026.*
+=======
+# HackEurope26
+>>>>>>> 955857c7d1c490a4e367f87dca3ecf9d0a0144fb
