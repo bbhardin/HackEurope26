@@ -1,4 +1,7 @@
 
+<img width="100" alt="Chat-GPT-Image-Feb-22-2026-05-27-06-AM" src="https://github.com/user-attachments/assets/30f0faf8-c80b-43d7-844f-c6c64cca825c" />
+
+
 # Kuna — AI Order Agent for Food & Beverage Wholesalers
 
 > *Built at HackEurope 2026 in 30 hours.*
