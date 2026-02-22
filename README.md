@@ -1,9 +1,9 @@
-<<<<<<< HEAD
+
 # Kuna — AI Order Agent for Food & Beverage Wholesalers
 
 > *Built at HackEurope 2026 in 30 hours.*
 
-**Kuna** places an AI agent inside your wholesaler's WhatsApp. It reads every customer order, structures it instantly, and holds it for your one-click approval. No new tools for your customers. No behaviour change. Just faster, smarter order processing.
+**Kuna** is your wholesale AI agent to connect with customers using the channels they prefer. It reads every customer order, structures it instantly, and holds it for your one-click approval. No new tools for your customers. No behaviour change. Just faster, smarter order processing.
 
 ---
 
@@ -12,7 +12,6 @@
 European food & drink wholesaling is a **€2 trillion market** with 414,000 businesses. It runs on phone calls, WhatsApp messages, and gut feeling.
 
 A typical day at a mid-size wholesaler (50 employees, €50M revenue):
-
 - Orders arrive around the clock — WhatsApp messages from chefs at 10pm, voicemails at midnight, emails at 5am
 - Inside sales staff spend every morning **manually transcribing** messages into the ERP
 - Error rate: 1–3%. On €50M revenue, that's **€500K–1.5M in mis-shipped orders per year**
@@ -36,11 +35,13 @@ A typical day at a mid-size wholesaler (50 employees, €50M revenue):
    │                               │  Matches to catalogue          │
    │                               │  Checks order history          │
    │                               │  Builds structured order       │
+   |                               |  Determines confidence in query|
+   |                               |  Confidence too low? Wait approval |
    │                               │───────────────────────────────►│
    │                               │    (Dashboard: "Approve?")     │
    │                               │                                │
    │                               │                   clicks YES   │
-   │                               │◄──────────────────────────────│
+   │                               │◄─────────────────────────────-─│
    │                               │                                │
    │  "Order confirmed:            │                                │
    │   20kg chicken (€84)          │                                │
@@ -324,6 +325,3 @@ Chef Davis replies *"Yes."* Done. Order confirmed, no manual work required.
 ---
 
 *Built at HackEurope 2026.*
-=======
-# HackEurope26
->>>>>>> 955857c7d1c490a4e367f87dca3ecf9d0a0144fb
