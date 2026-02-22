@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Overview", icon: "◈" },
@@ -15,6 +16,22 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme") as "dark" | "light" | null;
+    if (saved) {
+      setTheme(saved);
+      document.documentElement.dataset.theme = saved === "light" ? "light" : "";
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.dataset.theme = next === "light" ? "light" : "";
+    localStorage.setItem("theme", next);
+  };
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 flex flex-col border-r"
@@ -50,6 +67,14 @@ export function Sidebar() {
       </nav>
 
       <div className="p-6 border-t" style={{ borderColor: "var(--color-border)" }}>
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-2 text-xs cursor-pointer mb-3"
+          style={{ color: "var(--color-text-muted)" }}
+        >
+          <span>{theme === "dark" ? "☀" : "☽"}</span>
+          {theme === "dark" ? "Light mode" : "Dark mode"}
+        </button>
         <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
           Rheinfood Demo
         </p>
