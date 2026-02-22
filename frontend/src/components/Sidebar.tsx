@@ -37,12 +37,7 @@ export function Sidebar() {
     <aside className="fixed left-0 top-0 h-screen w-64 flex flex-col border-r"
       style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
       <div className="p-6 border-b" style={{ borderColor: "var(--color-border)" }}>
-        <h1 className="text-lg font-bold tracking-tight" style={{ color: "var(--color-accent)" }}>
-          ◆ Wholesaler AI
-        </h1>
-        <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
-          Order Management Dashboard
-        </p>
+        <img src="/logo.png" alt="Kuna" className="h-24 w-auto" />
       </div>
 
       <nav className="flex-1 py-4">
