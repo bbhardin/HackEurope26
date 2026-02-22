@@ -5,6 +5,7 @@ export interface OrderItem {
   product_name: string;
   sku: string;
   unit: string;
+  unit_type: string;
   category?: string;
   quantity: number;
   unit_price: number;
@@ -25,6 +26,9 @@ export interface Order {
   created_at: string;
   confirmed_at: string | null;
   confirmed_by: string | null;
+  fulfilled_at: string | null;
+  flags_json: string | null;
+  flags: string[];
   items: OrderItem[];
 }
 
@@ -37,6 +41,9 @@ export interface Customer {
   delivery_address: string;
   health_score: number;
   created_at: string;
+  latest_health_event: string | null;
+  latest_health_severity: string | null;
+  latest_health_date: string | null;
 }
 
 export interface CustomerContext {
@@ -85,8 +92,13 @@ export interface OrdersOverview {
   confirmed_today_value: number;
   confirmed_all_count: number;
   confirmed_all_value: number;
+  fulfilled_today_count: number;
+  fulfilled_today_value: number;
+  fulfilled_all_count: number;
+  fulfilled_all_value: number;
   rejected_count: number;
   flagged_count: number;
+  needs_clarification_count: number;
 }
 
 export interface Conversation {
@@ -96,5 +108,56 @@ export interface Conversation {
   direction: string;
   message_text: string;
   parsed_intent: string | null;
+  source: string;
   created_at: string;
+}
+
+export interface AggregatedItem {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  category: string;
+  unit: string;
+  unit_type: string;
+  total_quantity: number;
+  order_count: number;
+}
+
+export interface HealthEvent {
+  id: string;
+  customer_id: string;
+  event_type: string;
+  severity: string;
+  detail: string;
+  created_at: string;
+}
+
+export interface DetectedOrderChange {
+  order_id: string;
+  action: string;
+  product_name: string;
+  product_id: string;
+  quantity_change: number;
+  confidence: number;
+}
+
+export interface ManualMessageResponse {
+  status: string;
+  detected_changes: DetectedOrderChange[];
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  unit: string;
+  unit_type: string;
+  price_default: number;
+}
+
+export interface EditableItem {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
 }

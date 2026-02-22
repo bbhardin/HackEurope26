@@ -502,9 +502,10 @@ def seed_products(conn: sqlite3.Connection) -> dict[str, str]:
         for name, sku, unit, price in items:
             pid = f"prod-{sku.lower()}"
             sku_to_id[sku] = pid
+            unit_type = "continuous" if unit in ("kg", "L") else "discrete"
             conn.execute(
-                "INSERT OR IGNORE INTO products (id, name, sku, category, unit, price_default) VALUES (?,?,?,?,?,?)",
-                (pid, name, sku, category, unit, price),
+                "INSERT OR IGNORE INTO products (id, name, sku, category, unit, unit_type, price_default) VALUES (?,?,?,?,?,?,?)",
+                (pid, name, sku, category, unit, unit_type, price),
             )
     return sku_to_id
 
@@ -565,9 +566,13 @@ def seed_order_history(conn: sqlite3.Connection, sku_to_id: dict[str, str]) -> N
             items_data = []
             for sku, base_qty in c["basket"]:
                 variation = random.uniform(0.8, 1.2)
-                qty = round(base_qty * variation, 1)
                 pid = sku_to_id[sku]
-                row = conn.execute("SELECT price_default FROM products WHERE id = ?", (pid,)).fetchone()
+                prod_row = conn.execute("SELECT price_default, unit_type FROM products WHERE id = ?", (pid,)).fetchone()
+                if prod_row and prod_row["unit_type"] == "discrete":
+                    qty = max(1, round(base_qty * variation))
+                else:
+                    qty = round(base_qty * variation, 1)
+                row = prod_row
                 price = row["price_default"] if row else 0.0
                 line_total = qty * price
                 total += line_total
@@ -576,9 +581,10 @@ def seed_order_history(conn: sqlite3.Connection, sku_to_id: dict[str, str]) -> N
             order_time = current.replace(hour=random.randint(18, 23), minute=random.randint(0, 59))
             confirm_time = (current + timedelta(hours=random.randint(8, 14))).isoformat()
 
+            fulfilled_time = (current + timedelta(hours=random.randint(14, 20))).isoformat()
             conn.execute(
-                "INSERT INTO orders (id, customer_id, channel, raw_message, status, total_value, created_at, confirmed_at, confirmed_by) VALUES (?,?,?,?,?,?,?,?,?)",
-                (order_id, c["id"], "whatsapp", SAMPLE_ORDER_MESSAGES[msg_idx], "confirmed", round(total, 2), order_time.isoformat(), confirm_time, "sales_team"),
+                "INSERT INTO orders (id, customer_id, channel, raw_message, status, total_value, created_at, confirmed_at, confirmed_by, fulfilled_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (order_id, c["id"], "whatsapp", SAMPLE_ORDER_MESSAGES[msg_idx], "fulfilled", round(total, 2), order_time.isoformat(), confirm_time, "sales_team", fulfilled_time),
             )
 
             for pid, qty, price, sku in items_data:
@@ -589,13 +595,13 @@ def seed_order_history(conn: sqlite3.Connection, sku_to_id: dict[str, str]) -> N
 
             conv_id = _uid()
             conn.execute(
-                "INSERT INTO conversations (id, customer_id, channel, direction, message_text, parsed_intent, created_at) VALUES (?,?,?,?,?,?,?)",
-                (conv_id, c["id"], "whatsapp", "inbound", SAMPLE_ORDER_MESSAGES[msg_idx], "place_order", order_time.isoformat()),
+                "INSERT INTO conversations (id, customer_id, channel, direction, message_text, parsed_intent, source, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (conv_id, c["id"], "whatsapp", "inbound", SAMPLE_ORDER_MESSAGES[msg_idx], "place_order", "system", order_time.isoformat()),
             )
             conf_msg = random.choice(CONFIRMATION_TEMPLATES)
             conn.execute(
-                "INSERT INTO conversations (id, customer_id, channel, direction, message_text, parsed_intent, created_at) VALUES (?,?,?,?,?,?,?)",
-                (_uid(), c["id"], "whatsapp", "outbound", conf_msg, None, confirm_time),
+                "INSERT INTO conversations (id, customer_id, channel, direction, message_text, parsed_intent, source, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (_uid(), c["id"], "whatsapp", "outbound", conf_msg, None, "system", confirm_time),
             )
 
             current += timedelta(days=interval)

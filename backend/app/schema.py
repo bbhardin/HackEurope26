@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS products (
     sku TEXT UNIQUE NOT NULL,
     category TEXT NOT NULL,
     unit TEXT NOT NULL,
+    unit_type TEXT NOT NULL DEFAULT 'continuous',
     price_default REAL NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -44,7 +45,9 @@ CREATE TABLE IF NOT EXISTS orders (
     total_value REAL NOT NULL DEFAULT 0.0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     confirmed_at TEXT,
-    confirmed_by TEXT
+    confirmed_by TEXT,
+    fulfilled_at TEXT,
+    flags_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
@@ -77,6 +80,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     direction TEXT NOT NULL,
     message_text TEXT NOT NULL,
     parsed_intent TEXT,
+    source TEXT NOT NULL DEFAULT 'system',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -89,6 +93,15 @@ CREATE TABLE IF NOT EXISTS order_patterns (
     next_expected_date TEXT NOT NULL,
     confidence REAL NOT NULL DEFAULT 0.8,
     PRIMARY KEY (customer_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_health_events (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL REFERENCES customers(id),
+    event_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS alerts (

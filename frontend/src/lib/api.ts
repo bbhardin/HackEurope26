@@ -6,6 +6,11 @@ import type {
   AgentAction,
   OrdersOverview,
   Conversation,
+  AggregatedItem,
+  HealthEvent,
+  ManualMessageResponse,
+  Product,
+  EditableItem,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -46,6 +51,39 @@ export async function rejectOrder(id: string): Promise<Order> {
   return fetchJson<Order>(`/api/orders/${id}/reject`, { method: "POST" });
 }
 
+export async function fulfilOrder(id: string, message?: string): Promise<Order> {
+  return fetchJson<Order>(`/api/orders/${id}/fulfil`, {
+    method: "POST",
+    body: JSON.stringify({ message: message || "" }),
+  });
+}
+
+export async function updateOrderItems(id: string, items: EditableItem[]): Promise<Order> {
+  return fetchJson<Order>(`/api/orders/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ items }),
+  });
+}
+
+export async function sendOrderMessage(orderId: string, message: string): Promise<ManualMessageResponse> {
+  return fetchJson<ManualMessageResponse>(`/api/orders/${orderId}/message`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
+export async function clarifyOrder(orderId: string, message: string): Promise<Record<string, string>> {
+  return fetchJson<Record<string, string>>(`/api/orders/${orderId}/clarify`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
+export async function getAggregatedItems(status?: string): Promise<AggregatedItem[]> {
+  const query = status ? `?status=${status}` : "";
+  return fetchJson<AggregatedItem[]>(`/api/orders/aggregate${query}`);
+}
+
 export async function getCustomers(): Promise<Customer[]> {
   return fetchJson<Customer[]>("/api/customers");
 }
@@ -64,6 +102,24 @@ export async function getCustomerOrders(id: string): Promise<Order[]> {
 
 export async function getCustomerConversations(id: string): Promise<Conversation[]> {
   return fetchJson<Conversation[]>(`/api/customers/${id}/conversations`);
+}
+
+export async function getHealthEvents(id: string): Promise<HealthEvent[]> {
+  return fetchJson<HealthEvent[]>(`/api/customers/${id}/health-events`);
+}
+
+export async function sendCustomerMessage(customerId: string, message: string): Promise<ManualMessageResponse> {
+  return fetchJson<ManualMessageResponse>(`/api/customers/${customerId}/message`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
+export async function logCommunication(customerId: string, channel: string, message: string, orderId?: string): Promise<Record<string, string>> {
+  return fetchJson<Record<string, string>>(`/api/customers/${customerId}/note`, {
+    method: "POST",
+    body: JSON.stringify({ channel, message, order_id: orderId || null }),
+  });
 }
 
 export async function getAlerts(acknowledged = false): Promise<Alert[]> {
@@ -89,4 +145,8 @@ export async function simulateMessage(phone: string, message: string): Promise<v
     method: "POST",
     body: JSON.stringify({ phone, message, message_type: "text" }),
   });
+}
+
+export async function searchProducts(query: string): Promise<Product[]> {
+  return fetchJson<Product[]>(`/api/products/search?q=${encodeURIComponent(query)}`);
 }
