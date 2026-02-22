@@ -150,6 +150,10 @@ These customers should:
 - Be linked to the wholesaler.
 - Be able to send messages via WhatsApp into the application.
 
+On the flipside, we have a number representing the wholesaler. So any message sent from the application should automatically trigger a message from that number's WhatsApp to be sent to a customer number (the ones referenced above). The number for the wholsealer is:
+
+- **+49 170 3478722** – Mads
+
 ---
 
 ## 12. Automatic Customer Profile Creation
